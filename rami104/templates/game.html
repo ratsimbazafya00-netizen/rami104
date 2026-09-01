@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Rami 104 — Salon {{ room_code }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="table-body" data-room-code="{{ room_code }}">
+
+  <!-- ===== LOBBY ===== -->
+  <section id="view-lobby" class="view">
+    <header class="lobby-header">
+      <p class="eyebrow">Salon</p>
+      <h1 class="room-code">{{ room_code }}</h1>
+      <button id="btn-copy-link" class="btn btn-ghost btn-small">Copier le lien d'invitation</button>
+    </header>
+
+    <ul id="seat-list" class="seat-list"></ul>
+
+    <div id="lobby-actions" class="lobby-actions">
+      <button id="btn-start" class="btn btn-primary" hidden>Démarrer la partie</button>
+      <label id="force-start-label" class="force-label" hidden>
+        <input type="checkbox" id="force-start"> Démarrer avec moins de 5 joueurs
+      </label>
+      <p id="lobby-hint" class="hint">En attente des autres joueurs…</p>
+    </div>
+  </section>
+
+  <!-- ===== TABLE DE JEU ===== -->
+  <section id="view-table" class="view" hidden>
+
+    <header class="table-header">
+      <div id="joker-badge" class="joker-badge"></div>
+      <div id="turn-banner" class="turn-banner"></div>
+    </header>
+
+    <div id="opponents-strip" class="opponents-strip"></div>
+
+    <div class="play-area">
+      <button id="pile-defausse" class="pile pile-defausse" title="Prendre la défausse">
+        <span class="pile-label">Défausse</span>
+        <div id="discard-card" class="card card-empty">—</div>
+      </button>
+
+      <button id="pile-pioche" class="pile pile-pioche" title="Piocher">
+        <div class="card card-back"></div>
+        <span class="pile-label"><span id="deck-count">0</span> cartes</span>
+      </button>
+    </div>
+
+    <div id="action-bar" class="action-bar" hidden>
+      <button id="btn-cancel-declare" class="btn btn-ghost btn-small" hidden>Annuler la déclaration</button>
+      <button id="btn-declare" class="btn btn-gold">Proposer ma main gagnante</button>
+      <p class="hint">Ou touchez une carte de votre main pour la défausser.</p>
+    </div>
+
+    <!-- Constructeur de combinaisons (déclaration de victoire) -->
+    <div id="declare-builder" class="declare-builder" hidden>
+      <div class="zone zone-tri" data-zone="tri">
+        <h3>Tri <span class="zone-count" data-count="tri">0/3</span></h3>
+        <p class="zone-hint">Même rang, 3 couleurs différentes — joker autorisé seulement si le Carré est un carré pur (sans joker)</p>
+        <div class="zone-slots" data-zone-slots="tri"></div>
+      </div>
+      <div class="zone zone-escalier" data-zone="escalier">
+        <h3>Escalier <span class="zone-count" data-count="escalier">0/3</span></h3>
+        <p class="zone-hint">3 cartes suivies, même couleur — joker autorisé seulement si le Carré est un escalier de 4 pur (sans joker)</p>
+        <div class="zone-slots" data-zone-slots="escalier"></div>
+      </div>
+      <div class="zone zone-carre" data-zone="carre">
+        <h3>Carré <span class="zone-count" data-count="carre">0/4</span></h3>
+        <p class="zone-hint">Carré ou escalier de 4 — 1 joker autorisé (sans condition)</p>
+        <div class="zone-slots" data-zone-slots="carre"></div>
+      </div>
+      <div class="zone zone-groupe4" data-zone="groupe4">
+        <h3>4e groupe <span class="zone-count" data-count="groupe4">0/3</span></h3>
+        <p class="zone-hint">Tri ou escalier — 1 joker autorisé (sans condition)</p>
+        <div class="zone-slots" data-zone-slots="groupe4"></div>
+      </div>
+      <div class="zone zone-discard">
+        <h3>Carte défaussée</h3>
+        <p class="zone-hint">La carte restante, jouée automatiquement</p>
+        <div class="zone-slots" data-zone-slots="discard"></div>
+      </div>
+      <button id="btn-validate-declare" class="btn btn-gold">Valider ma main</button>
+      <p id="declare-error" class="error-text" hidden></p>
+    </div>
+
+    <div id="hand-wrap" class="hand-wrap">
+      <div id="hand" class="hand" data-dropzone="hand"></div>
+    </div>
+
+    <div class="panels-row">
+      <button id="btn-log-toggle" class="btn-log-toggle">Journal</button>
+      <button id="btn-discard-toggle" class="btn-log-toggle">Défausse</button>
+    </div>
+    <div id="log-panel" class="log-panel" hidden></div>
+    <div id="discard-panel" class="log-panel" hidden></div>
+  </section>
+
+  <!-- ===== FIN DE PARTIE ===== -->
+  <section id="view-finished" class="view" hidden>
+    <div class="finished-card">
+      <p class="eyebrow">Partie terminée</p>
+      <h1 id="finished-title">—</h1>
+      <p id="finished-reason" class="hint"></p>
+
+      <div id="finished-hand" class="declare-builder finished-hand" hidden>
+        <div class="zone zone-tri">
+          <h3>Tri</h3>
+          <div id="fh-tri" class="zone-slots read-only"></div>
+        </div>
+        <div class="zone zone-escalier">
+          <h3>Escalier</h3>
+          <div id="fh-escalier" class="zone-slots read-only"></div>
+        </div>
+        <div class="zone zone-carre">
+          <h3>Carré</h3>
+          <div id="fh-carre" class="zone-slots read-only"></div>
+        </div>
+        <div class="zone zone-groupe4">
+          <h3>4e groupe</h3>
+          <div id="fh-groupe4" class="zone-slots read-only"></div>
+        </div>
+        <div class="zone zone-discard">
+          <h3>Carte défaussée</h3>
+          <div id="fh-discard" class="zone-slots read-only"></div>
+        </div>
+      </div>
+
+      <a href="/" class="btn btn-primary">Retour à l'accueil</a>
+    </div>
+  </section>
+
+  <p id="table-error" class="error-toast" hidden></p>
+
+<script src="{{ url_for('static', filename='js/game.js') }}"></script>
+<script>
+  RamiTable.init("{{ room_code }}");
+</script>
+</body>
+</html>
