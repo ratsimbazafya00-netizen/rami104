@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#061a13">
+<title>Rami 104 — Créer un compte</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="auth-body">
+  <main class="auth-shell register-shell">
+    <a href="/" class="auth-back">← Retour au lobby</a>
+    <section class="auth-card">
+      <div class="auth-brand compact">
+        <div class="auth-logo" aria-hidden="true"><span>10</span><span>J</span><span>Q</span></div>
+        <span class="brand-kicker">JOUEUR RAMI-104</span>
+        <h1>Créer un <em>compte</em></h1>
+        <p>Préparez votre profil pour retrouver facilement vos parties.</p>
+      </div>
+
+      <div class="auth-heading">
+        <span class="section-kicker">NOUVEAU JOUEUR</span>
+        <h2>Votre compte</h2>
+        <p>Les paiements et le solde seront ajoutés plus tard.</p>
+      </div>
+
+      <form id="register-form" class="auth-form">
+        <label for="register-name">Nom d'utilisateur (pseudo)</label>
+        <div class="input-shell auth-input"><span>♙</span><input id="register-name" type="text" maxlength="20" autocomplete="nickname" placeholder="Ex. Joueur_Rami104" required></div>
+
+        <label for="register-phone">Numéro Mobile Money</label>
+        <div class="input-shell auth-input"><span>☎</span><input id="register-phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+261 32 XX XXX XX" required></div>
+
+        <div class="auth-form-grid">
+          <div><label for="register-password">Mot de passe</label><div class="input-shell auth-input password-input"><span>🔒</span><input id="register-password" type="password" autocomplete="new-password" placeholder="••••••••" minlength="6" required><button type="button" class="password-toggle" data-target="register-password" aria-label="Afficher le mot de passe">◉</button></div></div>
+          <div><label for="register-confirm">Confirmation</label><div class="input-shell auth-input password-input"><span>✓</span><input id="register-confirm" type="password" autocomplete="new-password" placeholder="••••••••" minlength="6" required><button type="button" class="password-toggle" data-target="register-confirm" aria-label="Afficher le mot de passe">◉</button></div></div>
+        </div>
+
+        <label for="register-promo">Code parrainage / promo <small>(optionnel)</small></label>
+        <div class="input-shell auth-input"><span>🎁</span><input id="register-promo" type="text" maxlength="20" placeholder="Ex. BONUS2026" autocomplete="off"></div>
+
+        <label class="terms-check"><input id="register-terms" type="checkbox" required> <span>J'accepte les CGU et confirme avoir <strong>18 ans ou plus</strong>.</span></label>
+
+        <button class="btn btn-primary btn-xl auth-submit" type="submit"><span>CRÉER MON COMPTE</span><b>→</b></button>
+      </form>
+
+      <div id="auth-message" class="auth-message" hidden></div>
+      <div class="auth-divider"><span>DÉJÀ INSCRIT ?</span></div>
+      <a href="/login" class="btn btn-outline btn-xl auth-alt">Se connecter</a>
+      <a href="/" class="guest-link">Jouer sans compte pour le moment</a>
+
+      <div class="auth-benefits">
+        <div><span>♟</span><strong>Profil joueur</strong><small>Pseudo conservé sur l'appareil</small></div>
+        <div><span>♛</span><strong>Historique</strong><small>Préparé pour les futures statistiques</small></div>
+        <div><span>◆</span><strong>Solde</strong><small>Module paiement à venir</small></div>
+      </div>
+    </section>
+  </main>
+<script src="{{ url_for('static', filename='js/game.js') }}"></script>
+<script>RamiAuth.initRegister();</script>
+</body>
+</html>

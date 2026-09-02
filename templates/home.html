@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#061a13">
+<title>Rami 104 — Jouer en ligne</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="home">
+  <main class="home-shell">
+    <nav class="auth-nav" aria-label="Compte joueur">
+      <a href="/login" class="auth-link">↪ Se connecter</a>
+      <a href="/inscription" class="auth-link auth-link-primary">Créer un compte</a>
+    </nav>
+    <div class="home-hero">
+      <div class="logo-mark" aria-hidden="true">
+        <span class="logo-card logo-card-a">A</span>
+        <span class="logo-card logo-card-k">K</span>
+        <span class="logo-card logo-card-q">Q</span>
+      </div>
+      <div class="brand-lockup">
+        <span class="brand-kicker">TABLE MULTIJOUEUR</span>
+        <h1>Rami <span>104</span></h1>
+        <p>La table de Rami pensée pour le mobile.</p>
+      </div>
+      <div class="hero-pills" aria-label="Fonctionnalités">
+        <span>♠ 5 joueurs</span><span>♦ Joker</span><span>♣ Temps réel</span>
+      </div>
+    </div>
+
+    <section class="home-card primary-card" id="panel-create">
+      <div class="card-heading">
+        <div class="icon-bubble">＋</div>
+        <div><span class="section-kicker">NOUVELLE PARTIE</span><h2>Créer une table</h2></div>
+      </div>
+      <label for="create-name">Votre pseudo</label>
+      <div class="input-shell">
+        <span>♙</span><input id="create-name" type="text" maxlength="20" placeholder="Ex. Rasoa" autocomplete="nickname">
+      </div>
+      <button id="btn-create" class="btn btn-primary btn-xl"><span>Créer le salon</span><b>→</b></button>
+      <p class="microcopy">Vous serez automatiquement l'hôte de la table.</p>
+    </section>
+
+    <div class="or-divider"><span>OU REJOINDRE UNE TABLE</span></div>
+
+    <section class="home-card" id="panel-join">
+      <div class="card-heading">
+        <div class="icon-bubble blue">↗</div>
+        <div><span class="section-kicker">PARTIE EXISTANTE</span><h2>Rejoindre une table</h2></div>
+      </div>
+      <div class="form-grid">
+        <div>
+          <label for="join-code">Code du salon</label>
+          <div class="input-shell code-input"><span>#</span><input id="join-code" type="text" maxlength="5" placeholder="A1B2C" autocomplete="off" style="text-transform:uppercase"></div>
+        </div>
+        <div>
+          <label for="join-name">Votre pseudo</label>
+          <div class="input-shell"><span>♙</span><input id="join-name" type="text" maxlength="20" placeholder="Ex. Tiana" autocomplete="nickname"></div>
+        </div>
+      </div>
+      <button id="btn-join" class="btn btn-secondary btn-xl"><span>Rejoindre la table</span><b>→</b></button>
+    </section>
+
+    <div class="home-footer">
+      <span>🔒 Connexion sécurisée</span><span>•</span><span>104 cartes</span><span>•</span><span>Mobile & PC</span>
+    </div>
+    <p id="home-error" class="error-text" hidden></p>
+  </main>
+<script src="{{ url_for('static', filename='js/game.js') }}"></script>
+<script>RamiHome.init();</script>
+</body>
+</html>
