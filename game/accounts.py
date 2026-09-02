@@ -36,10 +36,12 @@ class AccountManager:
     def __init__(self):
         self.storage = build_storage()
         secret = os.environ.get("RAMI_SECRET_KEY") or os.environ.get("SECRET_KEY")
+        # Ne jamais faire planter l'import de Flask si la variable n'a pas
+        # encore été ajoutée dans Vercel. Une clé de secours permet au site
+        # de démarrer ; en production, RAMI_SECRET_KEY doit être configurée
+        # pour conserver une clé stable et sécurisée.
         if not secret:
-            if os.environ.get("VERCEL"):
-                raise RuntimeError("RAMI_SECRET_KEY doit être défini dans Vercel.")
-            secret = "rami104-local-dev-change-me"
+            secret = "rami104-vercel-first-deploy-change-this-key"
         self.signer = URLSafeTimedSerializer(secret, salt=AUTH_SALT)
 
     def register(self, name, phone, password, promo=""):
