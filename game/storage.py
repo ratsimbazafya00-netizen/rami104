@@ -98,17 +98,57 @@ class UpstashRestStorage:
         return True
 
 
+class RedisUrlStorage:
+    """Stockage persistant via une connexion Redis classique (protocole TCP,
+    chaîne `redis://` ou `rediss://`). C'est le format utilisé par
+    l'intégration "Redis Cloud" du Marketplace Vercel, qui expose une seule
+    variable `REDIS_URL` (contrairement à Upstash qui expose une paire
+    URL REST + token). Nécessite le paquet `redis` (voir requirements.txt)."""
+
+    def __init__(self, url):
+        import redis  # import différé : évite de casser le mode mémoire si absent
+        self._client = redis.Redis.from_url(url, decode_responses=True)
+
+    def get(self, key):
+        try:
+            return self._client.get(key)
+        except Exception as e:  # noqa: BLE001
+            raise StorageError(f"Erreur de connexion au stockage persistant : {e}") from e
+
+    def set(self, key, value, ex=None):
+        try:
+            self._client.set(key, value, ex=ex)
+        except Exception as e:  # noqa: BLE001
+            raise StorageError(f"Erreur de connexion au stockage persistant : {e}") from e
+
+    def delete(self, key):
+        try:
+            self._client.delete(key)
+        except Exception as e:  # noqa: BLE001
+            raise StorageError(f"Erreur de connexion au stockage persistant : {e}") from e
+
+    def is_persistent(self):
+        return True
+
+
 def build_storage():
     """Détecte automatiquement le stockage à utiliser à partir des variables
-    d'environnement :
-    - `KV_REST_API_URL` / `KV_REST_API_TOKEN` : injectées par l'intégration
-      Vercel KV quand elle est ajoutée au projet.
-    - `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` : si vous
-      connectez directement une base Upstash sans passer par l'intégration
-      Vercel KV.
-    - Sinon : stockage en mémoire (développement local uniquement)."""
-    url = os.environ.get("KV_REST_API_URL") or os.environ.get("UPSTASH_REDIS_REST_URL")
-    token = os.environ.get("KV_REST_API_TOKEN") or os.environ.get("UPSTASH_REDIS_REST_TOKEN")
-    if url and token:
-        return UpstashRestStorage(url, token)
+    d'environnement, dans cet ordre de priorité :
+    1. `KV_REST_API_URL` / `KV_REST_API_TOKEN` (ancien Vercel KV natif).
+    2. `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` (Upstash via
+       API REST, connecté directement ou via le Marketplace).
+    3. `REDIS_URL` (ou `REDIS_TLS_URL`) : connexion Redis classique, format
+       utilisé par l'intégration "Redis Cloud" du Marketplace Vercel.
+    4. Sinon : stockage en mémoire (développement local uniquement, ou
+       déploiement sans base connectée — l'état ne survivra alors pas aux
+       redémarrages d'instance)."""
+    rest_url = os.environ.get("KV_REST_API_URL") or os.environ.get("UPSTASH_REDIS_REST_URL")
+    rest_token = os.environ.get("KV_REST_API_TOKEN") or os.environ.get("UPSTASH_REDIS_REST_TOKEN")
+    if rest_url and rest_token:
+        return UpstashRestStorage(rest_url, rest_token)
+
+    redis_url = os.environ.get("REDIS_URL") or os.environ.get("REDIS_TLS_URL")
+    if redis_url:
+        return RedisUrlStorage(redis_url)
+
     return InMemoryStorage()
