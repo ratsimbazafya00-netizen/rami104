@@ -12,8 +12,10 @@
 <body class="home">
   <main class="home-shell">
     <nav class="auth-nav" aria-label="Compte joueur">
-      <a href="/login" class="auth-link">↪ Se connecter</a>
-      <a href="/inscription" class="auth-link auth-link-primary">Créer un compte</a>
+      <span class="auth-link account-status">♙ <strong id="account-name">Non connecté</strong></span>
+      <a href="/login" class="auth-link" id="nav-login">↪ Se connecter</a>
+      <a href="/inscription" class="auth-link auth-link-primary" id="nav-register">Créer un compte</a>
+      <button type="button" class="auth-link" id="btn-logout" hidden>Déconnexion</button>
     </nav>
     <div class="home-hero">
       <div class="logo-mark" aria-hidden="true">
@@ -41,7 +43,7 @@
         <span>♙</span><input id="create-name" type="text" maxlength="20" placeholder="Ex. Rasoa" autocomplete="nickname">
       </div>
       <button id="btn-create" class="btn btn-primary btn-xl"><span>Créer le salon</span><b>→</b></button>
-      <p class="microcopy">Vous serez automatiquement l'hôte de la table.</p>
+      <p class="microcopy">🔐 Compte obligatoire pour créer ou rejoindre une table. Vous serez automatiquement l'hôte.</p>
     </section>
 
     <div class="or-divider"><span>OU REJOINDRE UNE TABLE</span></div>

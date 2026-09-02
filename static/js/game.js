@@ -1,19 +1,46 @@
 /* Rami 104 — client JS (vanilla, polling AJAX, sans dépendance) */
 
+function getAuthToken() {
+  return localStorage.getItem("rami_auth_token") || "";
+}
+
+function requireLogin(next = "/") {
+  if (!getAuthToken()) {
+    window.location.href = `/login?next=${encodeURIComponent(next)}`;
+    return false;
+  }
+  return true;
+}
+
 async function apiPost(url, body) {
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(getAuthToken() ? { "Authorization": `Bearer ${getAuthToken()}` } : {}),
+    },
     body: JSON.stringify(body || {}),
   });
   const data = await res.json();
+  if (res.status === 401) {
+    localStorage.removeItem("rami_auth_token");
+    window.location.href = `/login?next=${encodeURIComponent(window.location.pathname)}`;
+    throw new Error(data.error || "Connexion requise.");
+  }
   if (!data.ok) throw new Error(data.error || "Erreur inconnue");
   return data;
 }
 
 async function apiGet(url) {
-  const res = await fetch(url);
+  const res = await fetch(url, {
+    headers: getAuthToken() ? { "Authorization": `Bearer ${getAuthToken()}` } : {},
+  });
   const data = await res.json();
+  if (res.status === 401) {
+    localStorage.removeItem("rami_auth_token");
+    window.location.href = `/login?next=${encodeURIComponent(window.location.pathname)}`;
+    throw new Error(data.error || "Connexion requise.");
+  }
   if (!data.ok) throw new Error(data.error || "Erreur inconnue");
   return data;
 }
@@ -38,11 +65,9 @@ const RamiAuth = {
         const visible = input.type === "text";
         input.type = visible ? "password" : "text";
         btn.textContent = visible ? "◉" : "◌";
-        btn.setAttribute("aria-label", visible ? "Afficher le mot de passe" : "Masquer le mot de passe");
       });
     });
   },
-
   message(text, type = "info") {
     const el = document.getElementById("auth-message");
     if (!el) return;
@@ -50,40 +75,49 @@ const RamiAuth = {
     el.className = `auth-message ${type}`;
     el.hidden = false;
   },
-
+  redirectAfterAuth(defaultPath = "/") {
+    const next = new URLSearchParams(window.location.search).get("next") || defaultPath;
+    window.location.href = next.startsWith("/") ? next : defaultPath;
+  },
   initLogin() {
     this.passwordToggles();
     const form = document.getElementById("login-form");
-    form?.addEventListener("submit", (e) => {
+    form?.addEventListener("submit", async (e) => {
       e.preventDefault();
       const phone = document.getElementById("login-phone").value.trim();
-      if (!phone) return;
-      /* UI prototype: on garde uniquement le numéro pour préremplir l'interface.
-         L'authentification réelle sera implémentée avec le backend plus tard. */
-      localStorage.setItem("rami_login_phone", phone);
-      this.message("Interface de connexion prête. L'authentification serveur sera activée dans la prochaine étape.", "info");
-      setTimeout(() => { window.location.href = "/"; }, 900);
+      const password = document.getElementById("login-password").value;
+      try {
+        const data = await apiPost("/api/auth/login", { phone, password });
+        localStorage.setItem("rami_auth_token", data.token);
+        localStorage.setItem("rami_profile", JSON.stringify(data.account));
+        this.message(`Bienvenue ${data.account.name} !`, "success");
+        setTimeout(() => this.redirectAfterAuth("/"), 350);
+      } catch (err) { this.message(err.message, "error"); }
     });
     document.getElementById("forgot-password")?.addEventListener("click", (e) => {
       e.preventDefault();
-      this.message("La récupération du mot de passe sera activée avec le système de compte.", "info");
+      this.message("La récupération du mot de passe sera ajoutée avec le module SMS/OTP.", "info");
     });
   },
-
   initRegister() {
     this.passwordToggles();
     const form = document.getElementById("register-form");
-    form?.addEventListener("submit", (e) => {
+    form?.addEventListener("submit", async (e) => {
       e.preventDefault();
       const name = document.getElementById("register-name").value.trim();
       const phone = document.getElementById("register-phone").value.trim();
       const pass = document.getElementById("register-password").value;
       const confirm = document.getElementById("register-confirm").value;
+      const promo = document.getElementById("register-promo")?.value.trim() || "";
       if (pass !== confirm) return this.message("Les deux mots de passe ne correspondent pas.", "error");
       if (pass.length < 6) return this.message("Le mot de passe doit contenir au moins 6 caractères.", "error");
-      localStorage.setItem("rami_profile", JSON.stringify({ name, phone }));
-      this.message("Profil enregistré sur cet appareil. Le compte serveur sera connecté lors de l'intégration backend.", "success");
-      setTimeout(() => { window.location.href = "/"; }, 1000);
+      try {
+        const data = await apiPost("/api/auth/register", { name, phone, password: pass, promo });
+        localStorage.setItem("rami_auth_token", data.token);
+        localStorage.setItem("rami_profile", JSON.stringify(data.account));
+        this.message(`Compte créé. Bienvenue ${data.account.name} !`, "success");
+        setTimeout(() => this.redirectAfterAuth("/"), 500);
+      } catch (err) { this.message(err.message, "error"); }
     });
   },
 };
@@ -93,8 +127,26 @@ const RamiAuth = {
    ============================================================ */
 const RamiHome = {
   init() {
+    const profile = JSON.parse(localStorage.getItem("rami_profile") || "null");
+    const name = document.getElementById("create-name");
+    if (profile?.name && name) name.value = profile.name;
+    const accountName = document.getElementById("account-name");
+    if (accountName) accountName.textContent = profile?.name || "Non connecté";
+    const logout = document.getElementById("btn-logout");
+    const login = document.getElementById("nav-login");
+    const register = document.getElementById("nav-register");
+    if (getAuthToken() && profile) {
+      if (logout) logout.hidden = false;
+      if (login) login.hidden = true;
+      if (register) register.hidden = true;
+    }
     document.getElementById("btn-create").addEventListener("click", () => this.create());
     document.getElementById("btn-join").addEventListener("click", () => this.join());
+    document.getElementById("btn-logout")?.addEventListener("click", () => {
+      localStorage.removeItem("rami_auth_token");
+      localStorage.removeItem("rami_profile");
+      window.location.reload();
+    });
   },
 
   showError(msg) {
@@ -104,6 +156,7 @@ const RamiHome = {
   },
 
   async create() {
+    if (!requireLogin("/")) return;
     const name = document.getElementById("create-name").value.trim();
     if (!name) return this.showError("Entrez votre nom pour créer la table.");
     try {
@@ -116,6 +169,7 @@ const RamiHome = {
   },
 
   async join() {
+    if (!requireLogin("/")) return;
     const code = document.getElementById("join-code").value.trim().toUpperCase();
     const name = document.getElementById("join-name").value.trim();
     if (!code) return this.showError("Entrez le code du salon.");
@@ -146,16 +200,12 @@ const RamiTable = {
 
   async init(roomCode) {
     this.roomCode = roomCode;
+    if (!requireLogin(`/salon/${roomCode}`)) return;
     this.playerId = localStorage.getItem(playerKey(roomCode));
 
     if (!this.playerId) {
-      const name = window.prompt("Vous n'êtes pas identifié sur ce salon.\nEntrez votre nom pour le rejoindre :");
-      if (!name) {
-        window.location.href = "/";
-        return;
-      }
       try {
-        const data = await apiPost("/api/room/join", { room_code: roomCode, player_name: name });
+        const data = await apiPost("/api/room/join", { room_code: roomCode });
         this.playerId = data.player_id;
         localStorage.setItem(playerKey(roomCode), this.playerId);
       } catch (e) {
@@ -179,6 +229,9 @@ const RamiTable = {
       );
     });
 
+    document.getElementById("btn-leave")?.addEventListener("click", () => this.leaveRoom());
+    document.getElementById("btn-leave-game")?.addEventListener("click", () => this.leaveRoom());
+
     document.getElementById("btn-start").addEventListener("click", async () => {
       const force = document.getElementById("force-start").checked;
       try {
@@ -188,6 +241,8 @@ const RamiTable = {
         this.showError(e.message);
       }
     });
+
+    document.getElementById("btn-next-round")?.addEventListener("click", () => this.nextRound());
 
     document.getElementById("pile-pioche").addEventListener("click", () => this.draw("pioche"));
     document.getElementById("pile-defausse").addEventListener("click", () => this.draw("defausse"));
@@ -224,6 +279,22 @@ const RamiTable = {
     } catch (e) {
       this.showError(e.message);
     }
+  },
+
+  async leaveRoom() {
+    if (!confirm("Quitter ce salon ?")) return;
+    try {
+      await apiPost(`/api/room/${this.roomCode}/leave`, { player_id: this.playerId });
+      localStorage.removeItem(playerKey(this.roomCode));
+      window.location.href = "/";
+    } catch (e) { this.showError(e.message); }
+  },
+
+  async nextRound() {
+    try {
+      await apiPost(`/api/room/${this.roomCode}/next-round`, { player_id: this.playerId });
+      this.poll();
+    } catch (e) { this.showError(e.message); }
   },
 
   async draw(source) {
@@ -388,7 +459,8 @@ const RamiTable = {
     if (state.phase === "playing") this.renderTable(state);
     if (state.phase === "finished") {
       this.renderFinished(state);
-      clearInterval(this.pollTimer);
+      // On continue de sonder pour voir quand l'hôte prépare la manche suivante.
+      if (!this.pollTimer) this.pollTimer = setInterval(() => this.poll(), 1500);
     }
   },
 
@@ -401,7 +473,7 @@ const RamiTable = {
       li.className = "seat-item" + (p ? " filled" : "");
       li.innerHTML = `<span class="seat-num">${seat + 1}</span>` +
         (p
-          ? `<span class="seat-name">${escapeHtml(p.name)}${p.is_me ? " (vous)" : ""}</span>`
+          ? `<span class="seat-name">${escapeHtml(p.name)}${p.is_me ? " (vous)" : ""}${p.is_host ? " 👑" : ""}</span>`
           : `<span class="seat-empty">En attente…</span>`);
       list.appendChild(li);
     }
@@ -422,11 +494,15 @@ const RamiTable = {
       hint.textContent = state.nb_players >= state.max_players
         ? "Tous les joueurs sont là. Démarrez la partie !"
         : `${state.nb_players}/${state.max_players} joueurs inscrits.`;
+      const starterHint = document.getElementById("next-starter-hint");
+      if (starterHint) starterHint.textContent = state.last_winner_name ? `Départ suivant : ${state.last_winner_name}.` : "Le premier hôte démarre la première manche.";
       document.getElementById("force-start").onchange = () => this.renderLobby(state);
     } else {
       btnStart.hidden = true;
       forceLabel.hidden = true;
-      hint.textContent = `${state.nb_players}/${state.max_players} joueurs inscrits. En attente que le joueur 1 démarre la partie…`;
+      hint.textContent = `${state.nb_players}/${state.max_players} joueurs inscrits. En attente de l’hôte (${state.host_name || "—"})…`;
+      const starterHint = document.getElementById("next-starter-hint");
+      if (starterHint) starterHint.textContent = state.last_winner_name ? `Départ suivant : ${state.last_winner_name}.` : "";
     }
   },
 
@@ -461,9 +537,15 @@ const RamiTable = {
 
     // Pioche / défausse
     document.getElementById("deck-count").textContent = state.deck_count;
+    const discardButton = document.getElementById("pile-defausse");
     const discardEl = document.getElementById("discard-card");
+    const topIsJoker = !!(state.discard_top && state.joker_info &&
+      state.discard_top.rank === state.joker_info.rank && state.joker_info.suits.includes(state.discard_top.suit));
+    discardButton.disabled = !state.is_my_turn || state.turn_stage !== "draw" || !state.discard_top || topIsJoker;
+    discardButton.title = topIsJoker ? "Joker sur la défausse : pioche obligatoire dans le sabot" : "Prendre la défausse";
     if (state.discard_top) {
       discardEl.className = "card " + (state.discard_top.color === "Rouge" ? "red" : "black");
+      if (topIsJoker) discardEl.classList.add("joker-card");
       discardEl.textContent = state.discard_top.label;
     } else {
       discardEl.className = "card card-empty";
@@ -569,6 +651,8 @@ const RamiTable = {
     const title = document.getElementById("finished-title");
     title.textContent = state.winner_name ? `🏆 ${state.winner_name} gagne !` : "Partie terminée";
     document.getElementById("finished-reason").textContent = state.win_reason || "";
+    const nextBtn = document.getElementById("btn-next-round");
+    if (nextBtn) nextBtn.hidden = !state.am_i_host;
 
     const wrap = document.getElementById("finished-hand");
     if (state.winning_hand) {

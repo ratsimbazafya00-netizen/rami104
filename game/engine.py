@@ -18,8 +18,9 @@ JOKER_AUTO_WIN_COUNT = 3
 
 
 class Player:
-    def __init__(self, player_id, name, seat):
+    def __init__(self, player_id, name, seat, account_id=None):
         self.id = player_id
+        self.account_id = account_id
         self.name = name
         self.seat = seat  # 0..4  (seat 0 = "joueur 1", etc.)
         self.hand = []     # list[Card]
@@ -43,20 +44,26 @@ class Room:
         self.winner_id = None
         self.win_reason = None
         self.winning_hand = None  # combinaisons de la main gagnante (si victoire par déclaration)
+        self.last_winner_id = None  # gagnant de la manche précédente
+        self.host_id = None
         self.lock = threading.RLock()
         self.created_at = time.time()
 
     # ---------- Lobby ----------
 
-    def add_player(self, name):
+    def add_player(self, name, account_id=None):
         with self.lock:
-            if self.phase != "lobby":
+            if self.phase not in ("lobby", "finished"):
                 raise ValueError("La partie a déjà commencé.")
+            if account_id and any(p.account_id == account_id for p in self.players):
+                raise ValueError("Ce compte est déjà présent dans ce salon.")
             if len(self.players) >= MAX_PLAYERS:
                 raise ValueError("Le salon est complet (5 joueurs).")
             pid = uuid.uuid4().hex[:8]
-            player = Player(pid, name.strip()[:20] or f"Joueur{len(self.players)+1}", len(self.players))
+            player = Player(pid, name.strip()[:20] or f"Joueur{len(self.players)+1}", len(self.players), account_id=account_id)
             self.players.append(player)
+            if self.host_id is None:
+                self.host_id = player.id
             self._log(f"{player.name} a rejoint le salon (siège {player.seat + 1}).")
             return player
 
@@ -77,8 +84,8 @@ class Room:
             if self.phase != "lobby":
                 raise ValueError("La partie a déjà commencé.")
             requester = self.get_player(requesting_player_id)
-            if requester is None or requester.seat != 0:
-                raise ValueError("Seul le joueur 1 (hôte) peut démarrer la partie.")
+            if requester is None or requester.id != self.host_id:
+                raise ValueError("Seul l’hôte peut démarrer la partie.")
             if len(self.players) < MAX_PLAYERS and not force:
                 raise ValueError(
                     f"Il faut {MAX_PLAYERS} joueurs pour démarrer ({len(self.players)} inscrits)."
@@ -107,7 +114,12 @@ class Room:
 
             self.deck = deck  # reste = pioche
             self.discard_pile = []
-            self.turn_index = 0
+            # Le gagnant de la manche précédente commence la suivante.
+            start_id = self.last_winner_id if self.last_winner_id and self.get_player(self.last_winner_id) else None
+            if start_id:
+                self.turn_index = next(i for i, p in enumerate(self.players) if p.id == start_id)
+            else:
+                self.turn_index = 0
             self.turn_stage = "draw"
             self.phase = "playing"
             self._log(
@@ -140,6 +152,8 @@ class Room:
                 player.hand.append(card)
                 self._log(f"{player.name} pioche une carte du sabot.")
             elif source == "defausse":
+                if self.discard_pile and self._is_joker_card(self.discard_pile[-1]["card"]):
+                    raise ValueError("Le Joker est sur la défausse : vous devez piocher dans le sabot.")
                 if not self.discard_pile:
                     raise ValueError("La défausse est vide.")
                 entry = self.discard_pile.pop()
@@ -151,6 +165,9 @@ class Room:
 
             self.turn_stage = "discard"
             self._check_joker_auto_win()
+
+    def _is_joker_card(self, card):
+        return bool(self.joker_info and is_joker(card, self.joker_info))
 
     def discard(self, player_id, card_id):
         with self.lock:
@@ -215,8 +232,63 @@ class Room:
             self.discard_pile.append({"card": discard_card, "player_id": player.id, "player_name": player.name})
             self.phase = "finished"
             self.winner_id = player.id
+            self.last_winner_id = player.id
             self.win_reason = "Main complète (tri + escalier + carré + 4e groupe)."
             self._log(f"🏆 {player.name} déclare et GAGNE : {message}")
+
+    def leave(self, player_id):
+        with self.lock:
+            player = self.get_player(player_id)
+            if player is None:
+                raise ValueError("Joueur inconnu.")
+            was_host = player.id == self.host_id
+            leaving_index = self.players.index(player)
+            old_turn_index = self.turn_index
+            self.players.remove(player)
+            if self.last_winner_id == player.id:
+                self.last_winner_id = None
+            # Réattribue les sièges sans changer l'ordre relatif des joueurs restants.
+            for i, p in enumerate(self.players):
+                p.seat = i
+            if not self.players:
+                raise ValueError("Le salon est vide.")
+            if was_host:
+                # Priorité au gagnant de la dernière manche, conformément à la règle.
+                winner = self.get_player(self.last_winner_id) if self.last_winner_id else None
+                self.host_id = winner.id if winner else self.players[0].id
+                self._log(f"👑 {self.get_player(self.host_id).name} devient le nouvel hôte.")
+            # Conserve le joueur suivant lorsque quelqu'un quitte pendant une partie.
+            if leaving_index < old_turn_index:
+                self.turn_index = old_turn_index - 1
+            elif leaving_index == old_turn_index:
+                self.turn_index = leaving_index % len(self.players)
+            else:
+                self.turn_index = old_turn_index % len(self.players)
+            return True
+
+    def prepare_next_round(self, requesting_player_id):
+        with self.lock:
+            if self.phase != "finished":
+                raise ValueError("La manche n'est pas terminée.")
+            if requesting_player_id != self.host_id:
+                raise ValueError("Seul l'hôte peut préparer la prochaine manche.")
+            for p in self.players:
+                p.hand = []
+                p.connected = True
+            self.deck = []
+            self.discard_pile = []
+            self.joker_info = None
+            self.winner_id = None
+            self.win_reason = None
+            self.winning_hand = None
+            self.turn_stage = "draw"
+            if self.last_winner_id and self.get_player(self.last_winner_id):
+                self.turn_index = next(i for i, p in enumerate(self.players) if p.id == self.last_winner_id)
+            else:
+                self.turn_index = 0
+            self.phase = "lobby"
+            self._log("🔄 Nouvelle manche prête. Le gagnant de la manche précédente commencera.")
+            return True
 
     # ---------- Fin de partie ----------
 
@@ -231,6 +303,7 @@ class Room:
             if player.joker_count(self.joker_info) >= JOKER_AUTO_WIN_COUNT:
                 self.phase = "finished"
                 self.winner_id = player.id
+                self.last_winner_id = player.id
                 origin = "à la distribution initiale" if initial else "en cours de partie"
                 self.win_reason = f"{player.name} a obtenu {JOKER_AUTO_WIN_COUNT} jokers ({origin})."
                 self._log(f"🏆 {player.name} gagne automatiquement : {JOKER_AUTO_WIN_COUNT} jokers réunis {origin} !")
@@ -281,6 +354,7 @@ class Room:
                     "card_count": len(p.hand),
                     "connected": p.connected,
                     "is_me": (me is not None and p.id == me.id),
+                    "is_host": (p.id == self.host_id),
                 })
             data = {
                 "room_code": self.code,
@@ -304,7 +378,11 @@ class Room:
                 "winner_name": self.get_player(self.winner_id).name if self.winner_id else None,
                 "win_reason": self.win_reason,
                 "winning_hand": self.winning_hand,
-                "am_i_host": bool(me and me.seat == 0),
+                "am_i_host": bool(me and me.id == self.host_id),
+                "host_id": self.host_id,
+                "host_name": self.get_player(self.host_id).name if self.host_id and self.get_player(self.host_id) else None,
+                "last_winner_id": self.last_winner_id,
+                "last_winner_name": self.get_player(self.last_winner_id).name if self.last_winner_id and self.get_player(self.last_winner_id) else None,
             }
             if self.phase != "lobby":
                 data["turn_player_id"] = self.current_player().id if self.players else None
@@ -333,6 +411,7 @@ class Room:
             "players": [
                 {
                     "id": p.id,
+                    "account_id": p.account_id,
                     "name": p.name,
                     "seat": p.seat,
                     "connected": p.connected,
@@ -356,6 +435,8 @@ class Room:
             "winner_id": self.winner_id,
             "win_reason": self.win_reason,
             "winning_hand": self.winning_hand,
+            "last_winner_id": self.last_winner_id,
+            "host_id": self.host_id,
             "created_at": self.created_at,
         }
 
@@ -365,7 +446,7 @@ class Room:
         room.phase = data.get("phase", "lobby")
         room.players = []
         for pd in data.get("players", []):
-            player = Player(pd["id"], pd["name"], pd["seat"])
+            player = Player(pd["id"], pd["name"], pd["seat"], account_id=pd.get("account_id"))
             player.hand = [Card.from_dict(cd) for cd in pd.get("hand", [])]
             player.connected = pd.get("connected", True)
             room.players.append(player)
@@ -385,6 +466,10 @@ class Room:
         room.winner_id = data.get("winner_id")
         room.win_reason = data.get("win_reason")
         room.winning_hand = data.get("winning_hand")
+        room.last_winner_id = data.get("last_winner_id")
+        room.host_id = data.get("host_id")
+        if room.host_id is None and room.players:
+            room.host_id = room.players[0].id
         room.created_at = data.get("created_at", time.time())
         return room
 

@@ -1,30 +1,32 @@
 # -*- coding: utf-8 -*-
-"""
-Rami 104 - Serveur Flask multijoueur (5 joueurs en ligne, chacun sur son
-téléphone). Communication par API REST + polling JS côté client (pas de
-websockets nécessaires).
-
-Lancement en local :
-    pip install -r requirements.txt
-    python app.py
-Puis, sur le même réseau Wi-Fi, chaque joueur ouvre sur son téléphone :
-    http://<IP_DU_SERVEUR>:5000
-
-Déploiement Vercel : voir README_VERCEL.md — nécessite d'ajouter
-l'intégration "Vercel KV" (ou une base Upstash Redis) pour que l'état des
-parties survive entre deux requêtes serverless. Sans cela, les parties sont
-perdues après quelques minutes d'inactivité (mémoire non persistante).
-"""
+"""Rami 104 - serveur Flask multijoueur avec comptes obligatoires."""
+from functools import wraps
 from flask import Flask, request, jsonify, render_template
 
 from game.engine import room_manager
 from game.storage import StorageError
+from game.accounts import account_manager
 
 app = Flask(__name__)
 
 
 def error_response(exc, code=400):
     return jsonify({"ok": False, "error": str(exc)}), code
+
+
+def current_account():
+    auth = request.headers.get("Authorization", "")
+    token = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
+    if not token:
+        token = (request.get_json(silent=True) or {}).get("auth_token", "")
+    return account_manager.account_from_token(token)
+
+
+def require_account():
+    account = current_account()
+    if account is None:
+        return None, error_response("Connexion requise pour jouer.", 401)
+    return account, None
 
 
 # ---------------------------------------------------------------- Pages ---
@@ -41,57 +43,98 @@ def salon(code):
 
 @app.route("/login")
 def login():
-    """UI de connexion — authentification réelle à brancher plus tard."""
     return render_template("login.html")
 
 
 @app.route("/inscription")
 def inscription():
-    """UI de création de compte — backend d'inscription à brancher plus tard."""
     return render_template("register.html")
+
+
+# -------------------------------------------------------- Auth API -------
+
+@app.route("/api/auth/register", methods=["POST"])
+def api_register():
+    data = request.get_json(force=True) or {}
+    try:
+        account = account_manager.register(
+            data.get("name", ""),
+            data.get("phone", ""),
+            data.get("password", ""),
+            data.get("promo", ""),
+        )
+        token = account_manager.token_for(account)
+        return jsonify({
+            "ok": True,
+            "token": token,
+            "account": {"id": account["id"], "name": account["name"], "phone": account["phone"]},
+        })
+    except ValueError as e:
+        return error_response(e)
+    except StorageError as e:
+        return error_response(e, 503)
+
+
+@app.route("/api/auth/login", methods=["POST"])
+def api_login():
+    data = request.get_json(force=True) or {}
+    try:
+        account = account_manager.login(data.get("phone", ""), data.get("password", ""))
+        token = account_manager.token_for(account)
+        return jsonify({
+            "ok": True,
+            "token": token,
+            "account": {"id": account["id"], "name": account["name"], "phone": account["phone"]},
+        })
+    except ValueError as e:
+        return error_response(e)
+    except StorageError as e:
+        return error_response(e, 503)
+
+
+@app.route("/api/auth/me")
+def api_me():
+    account, error = require_account()
+    if error:
+        return error
+    return jsonify({"ok": True, "account": {"id": account["id"], "name": account["name"], "phone": account["phone"]}})
 
 
 # --------------------------------------------------------------- API ------
 
 @app.route("/api/status")
 def api_status():
-    """Utile pour diagnostiquer un déploiement : indique si le stockage des
-    parties est persistant (Vercel KV / Upstash) ou seulement en mémoire
-    (ce qui explique la disparition des parties sur Vercel après quelques
-    minutes)."""
-    return jsonify({
-        "ok": True,
-        "storage_persistent": room_manager.storage.is_persistent(),
-    })
+    return jsonify({"ok": True, "storage_persistent": room_manager.storage.is_persistent()})
 
 
 @app.route("/api/room/create", methods=["POST"])
 def api_create_room():
-    data = request.get_json(force=True)
-    name = (data or {}).get("player_name", "").strip()
-    if not name:
-        return error_response("Le nom du joueur est requis.")
+    account, error = require_account()
+    if error:
+        return error
     try:
         room = room_manager.create_room()
-        player = room.add_player(name)
+        player = room.add_player(account["name"], account_id=account["id"])
         room_manager.save_room(room)
     except StorageError as e:
         return error_response(e, 503)
+    except ValueError as e:
+        return error_response(e)
     return jsonify({"ok": True, "room_code": room.code, "player_id": player.id})
 
 
 @app.route("/api/room/join", methods=["POST"])
 def api_join_room():
-    data = request.get_json(force=True)
-    code = (data or {}).get("room_code", "")
-    name = (data or {}).get("player_name", "").strip()
-    if not name:
-        return error_response("Le nom du joueur est requis.")
+    account, error = require_account()
+    if error:
+        return error
+    data = request.get_json(force=True) or {}
+    code = data.get("room_code", "")
     try:
         room = room_manager.get_room(code)
         if room is None:
             return error_response("Salon introuvable.", 404)
-        player = room.add_player(name)
+        player = room.add_player(account["name"], account_id=account["id"])
         room_manager.save_room(room)
     except ValueError as e:
         return error_response(e)
@@ -102,6 +145,9 @@ def api_join_room():
 
 @app.route("/api/room/<code>/state")
 def api_room_state(code):
+    account, error = require_account()
+    if error:
+        return error
     try:
         room = room_manager.get_room(code)
     except StorageError as e:
@@ -109,11 +155,19 @@ def api_room_state(code):
     if room is None:
         return error_response("Salon introuvable.", 404)
     player_id = request.args.get("player_id", "")
+    # Le player_id est une clé de session locale ; on vérifie aussi que le
+    # joueur correspond bien au compte connecté pour empêcher l'usurpation.
+    player = room.get_player(player_id)
+    if player is None or player.account_id != account["id"]:
+        return error_response("Vous n'êtes pas inscrit dans ce salon.", 403)
     return jsonify({"ok": True, "state": room.state_for(player_id)})
 
 
 @app.route("/api/room/<code>/start", methods=["POST"])
 def api_start_room(code):
+    account, error = require_account()
+    if error:
+        return error
     data = request.get_json(force=True) or {}
     player_id = data.get("player_id", "")
     force = bool(data.get("force", False))
@@ -121,6 +175,9 @@ def api_start_room(code):
         room = room_manager.get_room(code)
         if room is None:
             return error_response("Salon introuvable.", 404)
+        player = room.get_player(player_id)
+        if not player or player.account_id != account["id"]:
+            return error_response("Joueur non autorisé.", 403)
         room.start_game(player_id, force=force)
         room_manager.save_room(room)
     except ValueError as e:
@@ -132,6 +189,9 @@ def api_start_room(code):
 
 @app.route("/api/room/<code>/draw", methods=["POST"])
 def api_draw(code):
+    account, error = require_account()
+    if error:
+        return error
     data = request.get_json(force=True) or {}
     player_id = data.get("player_id", "")
     source = data.get("source", "pioche")
@@ -139,6 +199,9 @@ def api_draw(code):
         room = room_manager.get_room(code)
         if room is None:
             return error_response("Salon introuvable.", 404)
+        player = room.get_player(player_id)
+        if not player or player.account_id != account["id"]:
+            return error_response("Joueur non autorisé.", 403)
         room.draw(player_id, source)
         room_manager.save_room(room)
     except ValueError as e:
@@ -150,6 +213,9 @@ def api_draw(code):
 
 @app.route("/api/room/<code>/discard", methods=["POST"])
 def api_discard(code):
+    account, error = require_account()
+    if error:
+        return error
     data = request.get_json(force=True) or {}
     player_id = data.get("player_id", "")
     card_id = data.get("card_id", "")
@@ -157,6 +223,9 @@ def api_discard(code):
         room = room_manager.get_room(code)
         if room is None:
             return error_response("Salon introuvable.", 404)
+        player = room.get_player(player_id)
+        if not player or player.account_id != account["id"]:
+            return error_response("Joueur non autorisé.", 403)
         room.discard(player_id, card_id)
         room_manager.save_room(room)
     except ValueError as e:
@@ -168,6 +237,9 @@ def api_discard(code):
 
 @app.route("/api/room/<code>/declare", methods=["POST"])
 def api_declare(code):
+    account, error = require_account()
+    if error:
+        return error
     data = request.get_json(force=True) or {}
     player_id = data.get("player_id", "")
     groups = data.get("groups", {})
@@ -176,7 +248,56 @@ def api_declare(code):
         room = room_manager.get_room(code)
         if room is None:
             return error_response("Salon introuvable.", 404)
+        player = room.get_player(player_id)
+        if not player or player.account_id != account["id"]:
+            return error_response("Joueur non autorisé.", 403)
         room.declare(player_id, groups, discard_card_id)
+        room_manager.save_room(room)
+    except ValueError as e:
+        return error_response(e)
+    except StorageError as e:
+        return error_response(e, 503)
+    return jsonify({"ok": True, "state": room.state_for(player_id)})
+
+
+@app.route("/api/room/<code>/leave", methods=["POST"])
+def api_leave_room(code):
+    account, error = require_account()
+    if error:
+        return error
+    data = request.get_json(force=True) or {}
+    player_id = data.get("player_id", "")
+    try:
+        room = room_manager.get_room(code)
+        if room is None:
+            return error_response("Salon introuvable.", 404)
+        player = room.get_player(player_id)
+        if not player or player.account_id != account["id"]:
+            return error_response("Joueur non autorisé.", 403)
+        room.leave(player_id)
+        room_manager.save_room(room)
+    except ValueError as e:
+        return error_response(e)
+    except StorageError as e:
+        return error_response(e, 503)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/room/<code>/next-round", methods=["POST"])
+def api_next_round(code):
+    account, error = require_account()
+    if error:
+        return error
+    data = request.get_json(force=True) or {}
+    player_id = data.get("player_id", "")
+    try:
+        room = room_manager.get_room(code)
+        if room is None:
+            return error_response("Salon introuvable.", 404)
+        player = room.get_player(player_id)
+        if not player or player.account_id != account["id"]:
+            return error_response("Joueur non autorisé.", 403)
+        room.prepare_next_round(player_id)
         room_manager.save_room(room)
     except ValueError as e:
         return error_response(e)

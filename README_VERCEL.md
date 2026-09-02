@@ -94,3 +94,15 @@ Puis ouvrir `http://127.0.0.1:5000`.
   d'actions strictement simultanées sur le même salon (rare, vu que
   chaque action nécessite que ce soit le tour du joueur), la dernière
   écriture l'emporte. Non bloquant pour un usage normal.
+
+
+## Comptes obligatoires
+
+Les joueurs doivent désormais créer un compte ou se connecter avant de créer/rejoindre un salon. Les comptes sont stockés dans le même stockage persistant que les salons. Définissez `RAMI_SECRET_KEY` dans Vercel avec une valeur secrète stable pour signer les sessions.
+
+## Nouvelles règles de manche
+
+- Un Joker posé au sommet de la défausse ne peut pas être repris : le joueur suivant doit piocher dans le sabot.
+- Après une victoire, le gagnant devient le joueur de départ de la manche suivante.
+- Lorsqu'une nouvelle manche est préparée, les nouveaux joueurs sont ajoutés à la fin des sièges existants.
+- Si l'hôte quitte le salon, la priorité de succession est donnée au gagnant de la dernière manche ; à défaut, au premier joueur restant.
