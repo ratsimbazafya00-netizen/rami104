@@ -128,10 +128,18 @@ const RamiAuth = {
 const RamiHome = {
   init() {
     const profile = JSON.parse(localStorage.getItem("rami_profile") || "null");
-    const name = document.getElementById("create-name");
-    if (profile?.name && name) name.value = profile.name;
     const accountName = document.getElementById("account-name");
+    const accountIdBadge = document.getElementById("account-id-badge");
+    const createName = document.getElementById("create-player-name");
+    const createId = document.getElementById("create-player-id");
+    const joinName = document.getElementById("join-player-name");
+    const joinId = document.getElementById("join-player-id");
     if (accountName) accountName.textContent = profile?.name || "Non connecté";
+    if (accountIdBadge) accountIdBadge.textContent = profile?.id ? `• ${profile.id}` : "";
+    if (createName) createName.textContent = profile?.name || "Connectez-vous";
+    if (createId) createId.textContent = profile?.id || "—";
+    if (joinName) joinName.textContent = profile?.name || "Connectez-vous";
+    if (joinId) joinId.textContent = profile?.id || "—";
     const logout = document.getElementById("btn-logout");
     const login = document.getElementById("nav-login");
     const register = document.getElementById("nav-register");
@@ -167,7 +175,7 @@ const RamiHome = {
         const code = prompt("Entrez le code du salon à inviter :"); if (!code) return;
         try { await apiPost(`/api/room/${code.trim().toUpperCase()}/invite-friend`, {target_id:b.dataset.id}); this.showError("Invitation envoyée."); } catch(e){ this.showError(e.message); }
       }));
-      document.querySelectorAll(".friend-join").forEach(b => b.addEventListener("click", () => { document.getElementById("join-code").value=b.dataset.code; document.getElementById("join-name").value=JSON.parse(localStorage.getItem("rami_profile")||"{}").name||""; document.getElementById("join-code").focus(); window.scrollTo({top:document.getElementById("panel-join").offsetTop,behavior:"smooth"}); }));
+      document.querySelectorAll(".friend-join").forEach(b => b.addEventListener("click", () => { document.getElementById("join-code").value=b.dataset.code; document.getElementById("join-code").focus(); window.scrollTo({top:document.getElementById("panel-join").offsetTop,behavior:"smooth"}); }));
     } catch(e) { this.showError(e.message); }
   },
 
@@ -177,7 +185,7 @@ const RamiHome = {
     try {
       const data = await apiGet(`/api/friends/search?q=${encodeURIComponent(q)}`);
       const el = document.getElementById("friend-search-results");
-      el.innerHTML = data.results.length ? `<div class="friends-subtitle">Résultats</div>` + data.results.map(a => `<div class="friend-row"><span>👤 <strong>${escapeHtml(a.name)}</strong></span><button class="btn btn-small friend-add" data-id="${a.id}">Ajouter</button></div>`).join("") : `<div class="friends-empty">Aucun compte trouvé.</div>`;
+      el.innerHTML = data.results.length ? `<div class="friends-subtitle">Résultats</div>` + data.results.map(a => `<div class="friend-row"><span>👤 <strong>${escapeHtml(a.name)}</strong><small class="friend-id">${escapeHtml(a.id || "")}</small></span><button class="btn btn-small friend-add" data-id="${a.id}">Ajouter</button></div>`).join("") : `<div class="friends-empty">Aucun compte trouvé.</div>`;
       document.querySelectorAll(".friend-add").forEach(b => b.addEventListener("click", async () => { try { await apiPost("/api/friends/request", {target_id:b.dataset.id}); b.textContent="Envoyée"; b.disabled=true; } catch(e){ this.showError(e.message); } }));
     } catch(e) { this.showError(e.message); }
   },
@@ -190,10 +198,8 @@ const RamiHome = {
 
   async create() {
     if (!requireLogin("/")) return;
-    const name = document.getElementById("create-name").value.trim();
-    if (!name) return this.showError("Entrez votre nom pour créer la table.");
     try {
-      const data = await apiPost("/api/room/create", { player_name: name });
+      const data = await apiPost("/api/room/create", {});
       localStorage.setItem(playerKey(data.room_code), data.player_id);
       window.location.href = `/salon/${data.room_code}`;
     } catch (e) {
@@ -204,11 +210,9 @@ const RamiHome = {
   async join() {
     if (!requireLogin("/")) return;
     const code = document.getElementById("join-code").value.trim().toUpperCase();
-    const name = document.getElementById("join-name").value.trim();
     if (!code) return this.showError("Entrez le code du salon.");
-    if (!name) return this.showError("Entrez votre nom pour rejoindre la table.");
     try {
-      const data = await apiPost("/api/room/join", { room_code: code, player_name: name });
+      const data = await apiPost("/api/room/join", { room_code: code });
       localStorage.setItem(playerKey(data.room_code), data.player_id);
       window.location.href = `/salon/${data.room_code}`;
     } catch (e) {
@@ -322,7 +326,7 @@ const RamiTable = {
     if (!panel.hidden) { panel.hidden = true; return; }
     try {
       const data = await apiGet("/api/friends");
-      panel.innerHTML = data.friends.length ? `<div class="friends-subtitle">Inviter dans le salon ${escapeHtml(this.roomCode)}</div>` + data.friends.map(f => `<div class="friend-row"><span>👤 ${escapeHtml(f.name)}</span><button class="btn btn-small room-invite-one" data-id="${f.id}">Inviter</button></div>`).join("") : `<div class="friends-empty">Ajoutez des amis depuis l'accueil pour pouvoir les inviter.</div>`;
+      panel.innerHTML = data.friends.length ? `<div class="friends-subtitle">Inviter dans le salon ${escapeHtml(this.roomCode)}</div>` + data.friends.map(f => `<div class="friend-row"><span>👤 <strong>${escapeHtml(f.name)}</strong><small class="friend-id">${escapeHtml(f.id || "")}</small></span><button class="btn btn-small room-invite-one" data-id="${f.id}">Inviter</button></div>`).join("") : `<div class="friends-empty">Ajoutez des amis depuis l'accueil pour pouvoir les inviter.</div>`;
       panel.hidden = false;
       panel.querySelectorAll(".room-invite-one").forEach(b => b.addEventListener("click", async () => {
         try { await apiPost(`/api/room/${this.roomCode}/invite-friend`, {target_id:b.dataset.id}); b.textContent="Envoyé ✓"; b.disabled=true; } catch(e){ this.showError(e.message); }
@@ -352,7 +356,7 @@ const RamiTable = {
         const code = prompt("Entrez le code du salon à inviter :"); if (!code) return;
         try { await apiPost(`/api/room/${code.trim().toUpperCase()}/invite-friend`, {target_id:b.dataset.id}); this.showError("Invitation envoyée."); } catch(e){ this.showError(e.message); }
       }));
-      document.querySelectorAll(".friend-join").forEach(b => b.addEventListener("click", () => { document.getElementById("join-code").value=b.dataset.code; document.getElementById("join-name").value=JSON.parse(localStorage.getItem("rami_profile")||"{}").name||""; document.getElementById("join-code").focus(); window.scrollTo({top:document.getElementById("panel-join").offsetTop,behavior:"smooth"}); }));
+      document.querySelectorAll(".friend-join").forEach(b => b.addEventListener("click", () => { document.getElementById("join-code").value=b.dataset.code; document.getElementById("join-code").focus(); window.scrollTo({top:document.getElementById("panel-join").offsetTop,behavior:"smooth"}); }));
     } catch(e) { this.showError(e.message); }
   },
 
@@ -362,7 +366,7 @@ const RamiTable = {
     try {
       const data = await apiGet(`/api/friends/search?q=${encodeURIComponent(q)}`);
       const el = document.getElementById("friend-search-results");
-      el.innerHTML = data.results.length ? `<div class="friends-subtitle">Résultats</div>` + data.results.map(a => `<div class="friend-row"><span>👤 <strong>${escapeHtml(a.name)}</strong></span><button class="btn btn-small friend-add" data-id="${a.id}">Ajouter</button></div>`).join("") : `<div class="friends-empty">Aucun compte trouvé.</div>`;
+      el.innerHTML = data.results.length ? `<div class="friends-subtitle">Résultats</div>` + data.results.map(a => `<div class="friend-row"><span>👤 <strong>${escapeHtml(a.name)}</strong><small class="friend-id">${escapeHtml(a.id || "")}</small></span><button class="btn btn-small friend-add" data-id="${a.id}">Ajouter</button></div>`).join("") : `<div class="friends-empty">Aucun compte trouvé.</div>`;
       document.querySelectorAll(".friend-add").forEach(b => b.addEventListener("click", async () => { try { await apiPost("/api/friends/request", {target_id:b.dataset.id}); b.textContent="Envoyée"; b.disabled=true; } catch(e){ this.showError(e.message); } }));
     } catch(e) { this.showError(e.message); }
   },
@@ -580,6 +584,11 @@ const RamiTable = {
   },
 
   renderLobby(state) {
+    const me = state.players.find((p) => p.is_me);
+    const lobbyName = document.getElementById("lobby-player-name");
+    const lobbyId = document.getElementById("lobby-player-id");
+    if (lobbyName) lobbyName.textContent = me?.name || "Votre pseudo";
+    if (lobbyId) lobbyId.textContent = me?.account_id || "—";
     const list = document.getElementById("seat-list");
     list.innerHTML = "";
     for (let seat = 0; seat < state.max_players; seat++) {
@@ -588,7 +597,7 @@ const RamiTable = {
       li.className = "seat-item" + (p ? " filled" : "");
       li.innerHTML = `<span class="seat-num">${seat + 1}</span>` +
         (p
-          ? `<span class="seat-name">${escapeHtml(p.name)}${p.is_me ? " (vous)" : ""}${p.is_host ? " 👑" : ""}</span>`
+          ? `<span class="seat-name"><strong>${escapeHtml(p.name)}${p.is_me ? " (vous)" : ""}${p.is_host ? " 👑" : ""}</strong><small class="seat-id">ID ${escapeHtml(p.account_id || p.id)}</small></span>`
           : `<span class="seat-empty">En attente…</span>`);
       list.appendChild(li);
     }
@@ -646,7 +655,7 @@ const RamiTable = {
     state.players.filter((p) => !p.is_me).forEach((p) => {
       const chip = document.createElement("div");
       chip.className = "opp-chip" + (p.id === state.turn_player_id ? " active-turn" : "");
-      chip.innerHTML = `<span class="opp-name">${escapeHtml(p.name)}</span><span class="opp-count">${p.card_count} cartes</span>`;
+      chip.innerHTML = `<span class="opp-name">${escapeHtml(p.name)}</span><span class="opp-id">ID ${escapeHtml(p.account_id || p.id)}</span><span class="opp-count">${p.card_count} cartes</span>`;
       strip.appendChild(chip);
     });
 

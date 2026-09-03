@@ -12,7 +12,7 @@
 <body class="home">
   <main class="home-shell">
     <nav class="auth-nav" aria-label="Compte joueur">
-      <span class="auth-link account-status">♙ <strong id="account-name">Non connecté</strong></span>
+      <span class="auth-link account-status">♙ <strong id="account-name">Non connecté</strong> <small id="account-id-badge"></small></span>
       <a href="/login" class="auth-link" id="nav-login">↪ Se connecter</a>
       <a href="/inscription" class="auth-link auth-link-primary" id="nav-register">Créer un compte</a>
       <button type="button" class="auth-link" id="btn-logout" hidden>Déconnexion</button>
@@ -38,12 +38,12 @@
         <div class="icon-bubble">＋</div>
         <div><span class="section-kicker">NOUVELLE PARTIE</span><h2>Créer une table</h2></div>
       </div>
-      <label for="create-name">Votre pseudo</label>
-      <div class="input-shell">
-        <span>♙</span><input id="create-name" type="text" maxlength="20" placeholder="Ex. Rasoa" autocomplete="nickname">
+      <div class="identity-card">
+        <div class="identity-icon">♙</div>
+        <div><span>Votre joueur</span><strong id="create-player-name">—</strong><small>ID : <b id="create-player-id">—</b></small></div>
       </div>
       <button id="btn-create" class="btn btn-primary btn-xl"><span>Créer le salon</span><b>→</b></button>
-      <p class="microcopy">🔐 Compte obligatoire pour créer ou rejoindre une table. Vous serez automatiquement l'hôte.</p>
+      <p class="microcopy">Votre pseudo est celui choisi à la création du compte. Il est automatiquement utilisé dans le salon.</p>
     </section>
 
     <div class="or-divider"><span>OU REJOINDRE UNE TABLE</span></div>
@@ -53,17 +53,11 @@
         <div class="icon-bubble blue">↗</div>
         <div><span class="section-kicker">PARTIE EXISTANTE</span><h2>Rejoindre une table</h2></div>
       </div>
-      <div class="form-grid">
-        <div>
-          <label for="join-code">Code du salon</label>
-          <div class="input-shell code-input"><span>#</span><input id="join-code" type="text" maxlength="5" placeholder="A1B2C" autocomplete="off" style="text-transform:uppercase"></div>
-        </div>
-        <div>
-          <label for="join-name">Votre pseudo</label>
-          <div class="input-shell"><span>♙</span><input id="join-name" type="text" maxlength="20" placeholder="Ex. Tiana" autocomplete="nickname"></div>
-        </div>
-      </div>
+      <div class="join-identity-note"><span>♙</span><div><strong id="join-player-name">—</strong><small>ID : <b id="join-player-id">—</b></small></div></div>
+      <label for="join-code">Code du salon</label>
+      <div class="input-shell code-input"><span>#</span><input id="join-code" type="text" maxlength="5" placeholder="A1B2C" autocomplete="off" style="text-transform:uppercase"></div>
       <button id="btn-join" class="btn btn-secondary btn-xl"><span>Rejoindre la table</span><b>→</b></button>
+      <p class="microcopy">Aucun pseudo à saisir : votre identité de joueur est automatiquement associée au salon.</p>
     </section>
 
     <section class="home-card friends-card" id="panel-friends">

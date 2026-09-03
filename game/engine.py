@@ -426,6 +426,7 @@ class Room:
             for p in self.players:
                 players_public.append({
                     "id": p.id,
+                    "account_id": p.account_id,
                     "name": p.name,
                     "seat": p.seat,
                     "card_count": len(p.hand),

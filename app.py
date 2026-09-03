@@ -104,7 +104,7 @@ def api_me():
 # ------------------------------------------------------ Amis / invitations -
 
 def public_account(account):
-    return {"id": account["id"], "name": account["name"], "phone": account["phone"]}
+    return {"id": account["id"], "name": account["name"]}
 
 @app.route("/api/friends")
 def api_friends():
@@ -206,7 +206,7 @@ def api_create_room():
         return error_response(e, 503)
     except ValueError as e:
         return error_response(e)
-    return jsonify({"ok": True, "room_code": room.code, "player_id": player.id})
+    return jsonify({"ok": True, "room_code": room.code, "player_id": player.id, "account_id": account["id"], "player_name": account["name"]})
 
 
 @app.route("/api/room/join", methods=["POST"])
@@ -231,7 +231,7 @@ def api_join_room():
         return error_response(e)
     except StorageError as e:
         return error_response(e, 503)
-    return jsonify({"ok": True, "room_code": room.code, "player_id": player.id})
+    return jsonify({"ok": True, "room_code": room.code, "player_id": player.id, "account_id": account["id"], "player_name": account["name"]})
 
 
 @app.route("/api/room/<code>/state")
