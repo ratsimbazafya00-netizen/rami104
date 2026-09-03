@@ -375,12 +375,12 @@ label{display:block;color:#9db6aa;font-size:.7rem;font-weight:700;margin:0 0 7px
 /* ---------------- TABLET / DESKTOP ---------------- */
 @media (min-width:640px){
   .home-shell{padding-top:55px}.home-hero{padding-bottom:30px}
-  .hand .card{flex-basis:64px;width:64px;height:92px;font-size:1.16rem}
+  .hand .card{flex-basis:60px;width:60px;height:86px;font-size:1.1rem}
   .card{width:68px;height:96px;font-size:1.2rem}
   .pile .card{width:68px;height:96px}
-  .zone-slots .card,.zone-slot-empty{width:56px;height:80px}
-  .zone-slots{min-height:91px}
-  .zone-discard .zone-slots{min-height:80px}
+  .zone-slots .card,.zone-slot-empty{width:50px;height:72px;font-size:.8rem}
+  .zone-slots{min-height:75px;gap:4px}
+  .zone-discard .zone-slots{min-height:72px}
 }
 @media (min-width:900px){
   .game-topbar{padding-left:24px;padding-right:24px}
@@ -389,7 +389,22 @@ label{display:block;color:#9db6aa;font-size:.7rem;font-weight:700;margin:0 0 7px
   .casino-table{min-height:270px}
   .center-table{padding-top:32px}
   .piles{gap:28px}
-  .hand-section{margin-top:22px}
+  .hand-section{margin-top:18px}
+
+  /* Déclaration compacte : les 5 sélections tiennent sur une seule ligne. */
+  .declare-builder{padding:10px 12px;margin-top:8px;border-radius:14px}
+  .builder-head{padding:0 2px 8px}
+  .builder-head h2{font-size:1.05rem}
+  .builder-rule{font-size:.55rem}
+  .builder-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+  .zone{padding:7px 7px 6px;border-radius:9px}
+  .zone h3{font-size:.62rem}
+  .zone-count{font-size:.54rem;padding:2px 5px}
+  .zone-hint{font-size:.52rem;line-height:1.2;margin:3px 0 5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .zone-slots{min-height:66px;gap:3px;flex-wrap:nowrap;overflow:hidden}
+  .zone-slots .card,.zone-slot-empty{width:42px;height:61px;font-size:.72rem}
+  .zone-discard .zone-slots{min-height:61px}
+  .builder-footer{margin-top:7px}
 }
 
 /* ---------------- SMALL MOBILE ---------------- */
@@ -410,9 +425,17 @@ label{display:block;color:#9db6aa;font-size:.7rem;font-weight:700;margin:0 0 7px
   .action-bar{width:calc(100% - 18px)}
   .turn-action-copy{display:none}
   .action-bar .btn-gold{flex:1}
-  .builder-grid{grid-template-columns:1fr}
+  .builder-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
   .builder-head{align-items:flex-start;flex-direction:column}
   .builder-rule{text-align:left}
+  .declare-builder{padding:9px 8px;margin-top:8px}
+  .zone{padding:6px}
+  .zone h3{font-size:.6rem}
+  .zone-count{font-size:.52rem;padding:2px 5px}
+  .zone-hint{font-size:.5rem;margin:2px 0 4px}
+  .zone-slots{min-height:63px;gap:3px}
+  .zone-slots .card,.zone-slot-empty{width:40px;height:58px;font-size:.68rem}
+  .zone-discard .zone-slots{min-height:58px}
 }
 
 /* Safe-area support for phones */
