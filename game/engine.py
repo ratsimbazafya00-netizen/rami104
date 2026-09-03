@@ -4,6 +4,7 @@ Moteur du Rami 104 cartes : gestion d'un salon de jeu (Room) avec 5 joueurs,
 distribution, pioche/défausse, joker, et conditions de victoire.
 """
 import json
+import random
 import threading
 import time
 import uuid
@@ -588,6 +589,34 @@ class RoomManager:
             if self.storage.get(self._key(code)) is None:
                 return Room(code)
         raise RuntimeError("Impossible de générer un code de salon unique.")
+
+    def find_random_open_room(self, exclude_account_id=None):
+        """Retourne aléatoirement un salon lobby non plein, idéalement avec
+        déjà un joueur. Les salons terminés ne sont jamais proposés."""
+        keys = []
+        try:
+            keys = self.storage.keys("rami104:room:*") or []
+        except Exception:
+            keys = []
+        candidates = []
+        for key in keys:
+            raw = self.storage.get(key)
+            if not raw:
+                continue
+            try:
+                room = Room.from_state_dict(json.loads(raw))
+            except Exception:
+                continue
+            if room.phase != "lobby" or len(room.players) >= MAX_PLAYERS:
+                continue
+            if exclude_account_id and any(p.account_id == exclude_account_id for p in room.players):
+                continue
+            candidates.append(room)
+        if not candidates:
+            return None
+        occupied = [r for r in candidates if r.players]
+        pool = occupied or candidates
+        return random.choice(pool)
 
     def get_room(self, code):
         raw = self.storage.get(self._key((code or "").upper()))

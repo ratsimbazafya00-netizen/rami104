@@ -26,6 +26,10 @@ def require_account():
     account = current_account()
     if account is None:
         return None, error_response("Connexion requise pour jouer.", 401)
+    try:
+        account_manager.mark_online(account)
+    except StorageError:
+        pass
     return account, None
 
 
@@ -104,7 +108,7 @@ def api_me():
 # ------------------------------------------------------ Amis / invitations -
 
 def public_account(account):
-    return {"id": account["id"], "name": account["name"]}
+    return {"id": account["id"], "name": account["name"], "online": account_manager.is_online(account), "last_seen": account.get("last_seen", 0)}
 
 @app.route("/api/friends")
 def api_friends():
@@ -136,8 +140,14 @@ def api_friend_request():
         return error
     data = request.get_json(force=True) or {}
     try:
-        target = account_manager.add_friend_request(account["id"], str(data.get("target_id", "")))
-        return jsonify({"ok": True, "target": public_account(target)})
+        target, created = account_manager.add_friend_request(account["id"], str(data.get("target_id", "")))
+        if created:
+            account_manager.add_notification(
+                target["id"], "friend_request", "Nouvelle demande d'ami",
+                f'{account["name"]} souhaite devenir votre ami.',
+                from_id=account["id"], from_name=account["name"], ref_id=account["id"],
+            )
+        return jsonify({"ok": True, "target": public_account(target), "created": created})
     except ValueError as e:
         return error_response(e)
     except StorageError as e:
@@ -150,7 +160,9 @@ def api_friend_accept():
         return error
     data = request.get_json(force=True) or {}
     try:
-        other = account_manager.accept_friend_request(account["id"], str(data.get("requester_id", "")))
+        requester_id = str(data.get("requester_id", ""))
+        other = account_manager.accept_friend_request(account["id"], requester_id)
+        account_manager.mark_notifications_by(account["id"], kind="friend_request", ref_id=requester_id)
         return jsonify({"ok": True, "friend": public_account(other)})
     except ValueError as e:
         return error_response(e)
@@ -178,15 +190,73 @@ def api_invite_friend(code):
         if not target:
             return error_response("Ami introuvable.")
         invs = target.get("invitations", [])
-        invs.append({"id": __import__("uuid").uuid4().hex[:12], "room_code": room.code, "from_id": account["id"], "from_name": account["name"], "created_at": __import__("time").time()})
+        invitation_id = __import__("uuid").uuid4().hex[:12]
+        invs.append({"id": invitation_id, "room_code": room.code, "from_id": account["id"], "from_name": account["name"], "created_at": __import__("time").time()})
         target["invitations"] = invs[-20:]
         account_manager.save_account(target)
+        account_manager.add_notification(
+            target["id"], "room_invite", "Invitation à jouer",
+            f'{account["name"]} vous invite à rejoindre le salon {room.code}.',
+            from_id=account["id"], from_name=account["name"], room_code=room.code, ref_id=invitation_id,
+        )
         return jsonify({"ok": True})
     except StorageError as e:
         return error_response(e, 503)
 
 
+# ---------------------------------------------------------- Notifications -
+
+@app.route("/api/notifications")
+def api_notifications():
+    account, error = require_account()
+    if error:
+        return error
+    try:
+        items = account_manager.notifications_for(account["id"], unread_only=False, limit=30)
+        unread = sum(1 for n in items if not n.get("read"))
+        return jsonify({"ok": True, "notifications": items, "unread": unread})
+    except StorageError as e:
+        return error_response(e, 503)
+
+@app.route("/api/notifications/read", methods=["POST"])
+def api_notification_read():
+    account, error = require_account()
+    if error:
+        return error
+    data = request.get_json(force=True) or {}
+    try:
+        if data.get("all"):
+            account_manager.mark_notifications_by(account["id"])
+        else:
+            account_manager.mark_notification_read(account["id"], str(data.get("id", "")))
+        return jsonify({"ok": True})
+    except (ValueError, StorageError) as e:
+        return error_response(e, 503 if isinstance(e, StorageError) else 400)
+
 # --------------------------------------------------------------- API ------
+
+@app.route("/api/matchmaking/random", methods=["POST"])
+def api_random_matchmaking():
+    """Place le joueur dans un salon lobby existant choisi aléatoirement,
+    de préférence avec au moins un autre joueur connecté récemment.
+    S'il n'y a aucun salon disponible, crée automatiquement une nouvelle table."""
+    account, error = require_account()
+    if error:
+        return error
+    try:
+        room = room_manager.find_random_open_room(exclude_account_id=account["id"])
+        if room is None:
+            room = room_manager.create_room()
+        player = room.add_player(account["name"], account_id=account["id"])
+        room_manager.save_room(room)
+        return jsonify({"ok": True, "room_code": room.code, "player_id": player.id,
+                        "account_id": account["id"], "player_name": account["name"],
+                        "matched": len(room.players) > 1, "players": len(room.players)})
+    except StorageError as e:
+        return error_response(e, 503)
+    except ValueError as e:
+        return error_response(e)
+
 
 @app.route("/api/status")
 def api_status():
@@ -224,8 +294,11 @@ def api_join_room():
         # Une invitation correspondant à ce salon est consommée à l'entrée.
         fresh = account_manager.find_by_id(account["id"])
         if fresh:
+            matching = [i for i in fresh.get("invitations", []) if str(i.get("room_code", "")).upper() == room.code]
             fresh["invitations"] = [i for i in fresh.get("invitations", []) if str(i.get("room_code", "")).upper() != room.code]
             account_manager.save_account(fresh)
+            for inv in matching:
+                account_manager.mark_notifications_by(account["id"], kind="room_invite", ref_id=inv.get("id"))
         room_manager.save_room(room)
     except ValueError as e:
         return error_response(e)

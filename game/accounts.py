@@ -17,6 +17,8 @@ ACCOUNT_PREFIX = "rami104:account:"
 PSEUDO_PREFIX = "rami104:pseudo:"
 AUTH_SALT = "rami104-auth-v1"
 AUTH_MAX_AGE = 60 * 60 * 24 * 30  # 30 jours
+ONLINE_TTL = 45  # secondes sans activité avant de considérer un joueur hors ligne
+PRESENCE_WRITE_INTERVAL = 10  # limite les écritures Redis
 
 
 def normalize_phone(phone):
@@ -107,6 +109,7 @@ class AccountManager:
             "friends": [],
             "friend_requests": [],
             "invitations": [],
+            "notifications": [],
             "created_at": time.time(),
         }
         self.storage.set(key, json.dumps(account))
@@ -147,6 +150,27 @@ class AccountManager:
         # pas encore, on conserve donc un index d'amis par compte dans son document.
         # Les méthodes publiques ci-dessous utilisent les clés connues via phone.
         return None
+
+    def mark_online(self, account):
+        """Met à jour la présence sans écrire dans Redis à chaque polling."""
+        now = time.time()
+        try:
+            last = float(account.get("last_seen", 0) or 0)
+        except (TypeError, ValueError):
+            last = 0
+        if now - last < PRESENCE_WRITE_INTERVAL:
+            return account
+        account["last_seen"] = now
+        self.save_account(account)
+        return account
+
+    @staticmethod
+    def is_online(account, now=None):
+        now = time.time() if now is None else now
+        try:
+            return now - float(account.get("last_seen", 0) or 0) <= ONLINE_TTL
+        except (TypeError, ValueError):
+            return False
 
     def save_account(self, account):
         raw = json.dumps(account)
@@ -217,11 +241,11 @@ class AccountManager:
         if target_id in friends:
             raise ValueError("Vous êtes déjà amis.")
         if target_id in requests:
-            return target
+            return target, False
         requests.add(target_id)
         me["friend_requests"] = list(requests)
         self.save_account(me)
-        return target
+        return target, True
 
     def accept_friend_request(self, account_id, requester_id):
         me = self.find_by_id(account_id)
@@ -246,11 +270,70 @@ class AccountManager:
         friends=[]; pending=[]
         for fid in me.get("friends", []):
             acc=self.find_by_id(fid)
-            if acc: friends.append({"id":acc["id"],"name":acc["name"]})
+            if acc: friends.append({"id":acc["id"],"name":acc["name"],"online":self.is_online(acc),"last_seen":acc.get("last_seen", 0)})
         for rid in me.get("friend_requests", []):
             acc=self.find_by_id(rid)
-            if acc: pending.append({"id":acc["id"],"name":acc["name"]})
+            if acc: pending.append({"id":acc["id"],"name":acc["name"],"online":self.is_online(acc),"last_seen":acc.get("last_seen", 0)})
         return friends, pending
+
+
+    def add_notification(self, account_id, kind, title, message, **extra):
+        account = self.find_by_id(account_id)
+        if not account:
+            raise ValueError("Compte introuvable.")
+        notifications = account.get("notifications", [])
+        notification = {
+            "id": uuid.uuid4().hex[:16],
+            "kind": kind,
+            "title": title,
+            "message": message,
+            "created_at": time.time(),
+            "read": False,
+        }
+        notification.update(extra)
+        notifications.append(notification)
+        account["notifications"] = notifications[-50:]
+        self.save_account(account)
+        return notification
+
+    def notifications_for(self, account_id, unread_only=False, limit=30):
+        account = self.find_by_id(account_id)
+        if not account:
+            return []
+        items = account.get("notifications", [])
+        if unread_only:
+            items = [n for n in items if not n.get("read")]
+        return list(reversed(items[-limit:]))
+
+    def mark_notification_read(self, account_id, notification_id):
+        account = self.find_by_id(account_id)
+        if not account:
+            raise ValueError("Compte introuvable.")
+        changed = False
+        for n in account.get("notifications", []):
+            if str(n.get("id")) == str(notification_id):
+                n["read"] = True
+                changed = True
+                break
+        if changed:
+            self.save_account(account)
+        return changed
+
+    def mark_notifications_by(self, account_id, kind=None, ref_id=None):
+        account = self.find_by_id(account_id)
+        if not account:
+            return
+        changed = False
+        for n in account.get("notifications", []):
+            if kind and n.get("kind") != kind:
+                continue
+            if ref_id and str(n.get("ref_id")) != str(ref_id):
+                continue
+            if not n.get("read"):
+                n["read"] = True
+                changed = True
+        if changed:
+            self.save_account(account)
 
 
 account_manager = AccountManager()

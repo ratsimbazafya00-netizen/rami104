@@ -6,77 +6,86 @@
 <meta name="theme-color" content="#061a13">
 <title>Rami 104 — Jouer en ligne</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
-<body class="home">
+<body class="home home-compact">
   <main class="home-shell">
-    <nav class="auth-nav" aria-label="Compte joueur">
-      <span class="auth-link account-status">♙ <strong id="account-name">Non connecté</strong> <small id="account-id-badge"></small></span>
-      <a href="/login" class="auth-link" id="nav-login">↪ Se connecter</a>
-      <a href="/inscription" class="auth-link auth-link-primary" id="nav-register">Créer un compte</a>
-      <button type="button" class="auth-link" id="btn-logout" hidden>Déconnexion</button>
-    </nav>
-    <div class="home-hero">
-      <div class="logo-mark" aria-hidden="true">
-        <span class="logo-card logo-card-a">A</span>
-        <span class="logo-card logo-card-k">K</span>
-        <span class="logo-card logo-card-q">Q</span>
+    <header class="home-topbar">
+      <a class="brand-mini home-brand" href="/" aria-label="Rami 104"><span>R</span> RAMI 104</a>
+      <div class="home-account">
+        <span class="account-status"><i></i><strong id="account-name">Non connecté</strong><small id="account-id-badge"></small></span>
+        <a href="/login" class="auth-link" id="nav-login">↪ Connexion</a>
+        <a href="/inscription" class="auth-link auth-link-primary" id="nav-register">Créer un compte</a>
+        <button type="button" class="auth-link" id="btn-logout" hidden>Déconnexion</button>
       </div>
-      <div class="brand-lockup">
-        <span class="brand-kicker">TABLE MULTIJOUEUR</span>
-        <h1>Rami <span>104</span></h1>
-        <p>La table de Rami pensée pour le mobile.</p>
-      </div>
-      <div class="hero-pills" aria-label="Fonctionnalités">
-        <span>♠ 5 joueurs</span><span>♦ Joker</span><span>♣ Temps réel</span>
-      </div>
-    </div>
+    </header>
 
-    <section class="home-card primary-card" id="panel-create">
-      <div class="card-heading">
-        <div class="icon-bubble">＋</div>
-        <div><span class="section-kicker">NOUVELLE PARTIE</span><h2>Créer une table</h2></div>
+    <section class="home-intro">
+      <div>
+        <span class="section-kicker">TABLE MULTIJOUEUR</span>
+        <h1>Jouez au <em>Rami 104</em></h1>
+        <p>Créez une table, rejoignez un salon ou laissez le jeu trouver automatiquement des joueurs en ligne.</p>
       </div>
-      <div class="identity-card">
-        <div class="identity-icon">♙</div>
-        <div><span>Votre joueur</span><strong id="create-player-name">—</strong><small>ID : <b id="create-player-id">—</b></small></div>
-      </div>
-      <button id="btn-create" class="btn btn-primary btn-xl"><span>Créer le salon</span><b>→</b></button>
-      <p class="microcopy">Votre pseudo est celui choisi à la création du compte. Il est automatiquement utilisé dans le salon.</p>
+      <div class="home-stats"><span>♠ 5 joueurs</span><span>♦ 104 cartes</span><span>♣ Temps réel</span></div>
     </section>
 
-    <div class="or-divider"><span>OU REJOINDRE UNE TABLE</span></div>
+    <section class="home-dashboard">
+      <!-- Colonne gauche : créer + rejoindre dans un seul bloc -->
+      <section class="home-card join-create-card">
+        <div class="card-heading compact-heading">
+          <div class="icon-bubble">＋</div>
+          <div><span class="section-kicker">SALON</span><h2>Créer ou rejoindre</h2></div>
+        </div>
 
-    <section class="home-card" id="panel-join">
-      <div class="card-heading">
-        <div class="icon-bubble blue">↗</div>
-        <div><span class="section-kicker">PARTIE EXISTANTE</span><h2>Rejoindre une table</h2></div>
-      </div>
-      <div class="join-identity-note"><span>♙</span><div><strong id="join-player-name">—</strong><small>ID : <b id="join-player-id">—</b></small></div></div>
-      <label for="join-code">Code du salon</label>
-      <div class="input-shell code-input"><span>#</span><input id="join-code" type="text" maxlength="5" placeholder="A1B2C" autocomplete="off" style="text-transform:uppercase"></div>
-      <button id="btn-join" class="btn btn-secondary btn-xl"><span>Rejoindre la table</span><b>→</b></button>
-      <p class="microcopy">Aucun pseudo à saisir : votre identité de joueur est automatiquement associée au salon.</p>
+        <div class="identity-inline">
+          <div class="identity-icon">♙</div>
+          <div><strong id="create-player-name">Connectez-vous</strong><small>ID : <b id="create-player-id">—</b></small></div>
+        </div>
+
+        <button id="btn-create" class="btn btn-primary btn-xl compact-btn"><span>Créer une nouvelle table</span><b>＋</b></button>
+
+        <div class="mini-or"><span>OU</span></div>
+
+        <label for="join-code">Code du salon</label>
+        <div class="join-line">
+          <div class="input-shell code-input"><span>#</span><input id="join-code" type="text" maxlength="5" placeholder="A1B2C" autocomplete="off" style="text-transform:uppercase"></div>
+          <button id="btn-join" class="btn btn-secondary join-btn"><span>Rejoindre</span><b>→</b></button>
+        </div>
+        <p class="microcopy compact-copy">Votre pseudo et votre ID sont automatiquement associés au salon.</p>
+      </section>
+
+      <!-- Centre : matchmaking -->
+      <section class="home-card quickmatch-card">
+        <div class="quickmatch-glow"></div>
+        <div class="quickmatch-icon">♟</div>
+        <span class="section-kicker">PARTIE RAPIDE</span>
+        <h2>Appariement aléatoire</h2>
+        <p>Trouvez automatiquement un salon ouvert avec des joueurs en ligne.</p>
+        <button id="btn-random-match" class="btn btn-primary btn-xl quickmatch-btn"><span>Jouer avec un joueur en ligne</span><b>▶</b></button>
+        <div class="match-status" id="match-status"><i></i><span>Recherche de joueurs...</span></div>
+      </section>
+
+      <!-- Droite : amis connectés -->
+      <section class="home-card online-friends-card">
+        <div class="card-heading compact-heading friends-heading">
+          <div class="icon-bubble green">♣</div>
+          <div><span class="section-kicker">COMMUNAUTÉ</span><h2>Mes amis</h2></div>
+          <span class="online-count" id="online-friend-count">0 en ligne</span>
+        </div>
+        <div id="friend-list" class="friends-list online-friends-list"><div class="friends-empty">Connectez-vous pour voir vos amis.</div></div>
+        <div id="friend-pending" class="friends-list"></div>
+        <div id="friend-invitations" class="friends-list"></div>
+        <div class="friend-search-row compact-search">
+          <input id="friend-search" type="text" maxlength="30" placeholder="Pseudo ou ID joueur…">
+          <button id="btn-friend-search" class="btn btn-secondary btn-search">Chercher</button>
+        </div>
+        <div id="friend-search-results" class="friends-list"></div>
+      </section>
     </section>
 
-    <section class="home-card friends-card" id="panel-friends">
-      <div class="card-heading">
-        <div class="icon-bubble">♥</div>
-        <div><span class="section-kicker">COMMUNAUTÉ</span><h2>Mes amis</h2></div>
-      </div>
-      <div class="friends-search-row">
-        <input id="friend-search" type="text" maxlength="30" placeholder="Rechercher un pseudo ou numéro…">
-        <button id="btn-friend-search" class="btn btn-secondary">Rechercher</button>
-      </div>
-      <div id="friend-search-results" class="friends-list"></div>
-      <div id="friend-pending" class="friends-list"></div>
-      <div id="friend-list" class="friends-list"><div class="friends-empty">Connectez-vous pour voir vos amis.</div></div>
-      <div id="friend-invitations" class="friends-list"></div>
-    </section>
-
-    <div class="home-footer">
-      <span>🔒 Connexion sécurisée</span><span>•</span><span>104 cartes</span><span>•</span><span>Mobile & PC</span>
+    <div class="home-footer compact-footer">
+      <span>🔒 Salon sécurisé</span><span>•</span><span>104 cartes</span><span>•</span><span>Mobile & PC</span>
     </div>
     <p id="home-error" class="error-text" hidden></p>
   </main>

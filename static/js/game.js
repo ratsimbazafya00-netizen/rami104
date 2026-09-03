@@ -123,6 +123,102 @@ const RamiAuth = {
 };
 
 /* ============================================================
+   Notifications globales — invitations d'amis et de salons
+   ============================================================ */
+const RamiNotifications = {
+  timer: null,
+  activeId: null,
+  seen: new Set(),
+
+  init() {
+    if (!getAuthToken()) return;
+    this.ensureHost();
+    this.poll();
+    this.timer = setInterval(() => this.poll(), 5000);
+  },
+
+  ensureHost() {
+    if (document.getElementById("rami-notification-host")) return;
+    const host = document.createElement("div");
+    host.id = "rami-notification-host";
+    host.setAttribute("aria-live", "polite");
+    document.body.appendChild(host);
+  },
+
+  async poll() {
+    if (!getAuthToken() || this.activeId) return;
+    try {
+      const data = await apiGet("/api/notifications");
+      const unread = (data.notifications || []).filter(n => !n.read && !this.seen.has(n.id));
+      if (unread.length) this.show(unread[0]);
+    } catch (_) {}
+  },
+
+  show(n) {
+    this.ensureHost();
+    this.activeId = n.id;
+    this.seen.add(n.id);
+    const host = document.getElementById("rami-notification-host");
+    const isGame = n.kind === "room_invite";
+    const icon = isGame ? "🎮" : "🤝";
+    const title = escapeHtml(n.title || (isGame ? "Invitation à jouer" : "Nouvelle demande d'ami"));
+    const message = escapeHtml(n.message || "Vous avez une nouvelle invitation.");
+    const room = isGame ? escapeHtml(n.room_code || "") : "";
+    host.innerHTML = `
+      <div class="rami-notification-popup">
+        <button class="notification-close" type="button" aria-label="Fermer">×</button>
+        <div class="notification-icon">${icon}</div>
+        <div class="notification-content">
+          <span class="notification-kicker">NOTIFICATION</span>
+          <strong>${title}</strong>
+          <p>${message}</p>
+          ${room ? `<small class="notification-room">SALON ${room}</small>` : ""}
+          <div class="notification-actions">
+            ${isGame
+              ? `<button class="btn btn-primary notification-action" data-action="join">Rejoindre</button>`
+              : `<button class="btn btn-primary notification-action" data-action="accept">Accepter</button>`}
+            <button class="btn btn-secondary notification-action" data-action="dismiss">Fermer</button>
+          </div>
+        </div>
+      </div>`;
+
+    host.querySelector(".notification-close")?.addEventListener("click", () => this.dismiss(n));
+    host.querySelector('[data-action="dismiss"]')?.addEventListener("click", () => this.dismiss(n));
+    host.querySelector('[data-action="accept"]')?.addEventListener("click", async () => {
+      try {
+        await apiPost("/api/friends/accept", { requester_id: n.from_id });
+        await this.markRead(n.id);
+        this.remove();
+        if (typeof RamiHome !== "undefined" && RamiHome.loadFriends) RamiHome.loadFriends();
+      } catch (e) { alert(e.message); }
+    });
+    host.querySelector('[data-action="join"]')?.addEventListener("click", async () => {
+      try {
+        const data = await apiPost("/api/room/join", { room_code: n.room_code });
+        localStorage.setItem(playerKey(data.room_code), data.player_id);
+        await this.markRead(n.id);
+        window.location.href = `/salon/${data.room_code}`;
+      } catch (e) { alert(e.message); }
+    });
+  },
+
+  async dismiss(n) {
+    await this.markRead(n.id);
+    this.remove();
+    setTimeout(() => this.poll(), 100);
+  },
+
+  async markRead(id) {
+    try { await apiPost("/api/notifications/read", { id }); } catch (_) {}
+  },
+
+  remove() {
+    document.getElementById("rami-notification-host")?.replaceChildren();
+    this.activeId = null;
+  }
+};
+
+/* ============================================================
    Page d'accueil
    ============================================================ */
 const RamiHome = {
@@ -132,14 +228,11 @@ const RamiHome = {
     const accountIdBadge = document.getElementById("account-id-badge");
     const createName = document.getElementById("create-player-name");
     const createId = document.getElementById("create-player-id");
-    const joinName = document.getElementById("join-player-name");
-    const joinId = document.getElementById("join-player-id");
     if (accountName) accountName.textContent = profile?.name || "Non connecté";
     if (accountIdBadge) accountIdBadge.textContent = profile?.id ? `• ${profile.id}` : "";
     if (createName) createName.textContent = profile?.name || "Connectez-vous";
     if (createId) createId.textContent = profile?.id || "—";
-    if (joinName) joinName.textContent = profile?.name || "Connectez-vous";
-    if (joinId) joinId.textContent = profile?.id || "—";
+
     const logout = document.getElementById("btn-logout");
     const login = document.getElementById("nav-login");
     const register = document.getElementById("nav-register");
@@ -148,11 +241,18 @@ const RamiHome = {
       if (login) login.hidden = true;
       if (register) register.hidden = true;
     }
-    document.getElementById("btn-create").addEventListener("click", () => this.create());
-    document.getElementById("btn-join").addEventListener("click", () => this.join());
+
+    document.getElementById("btn-create")?.addEventListener("click", () => this.create());
+    document.getElementById("btn-join")?.addEventListener("click", () => this.join());
+    document.getElementById("btn-random-match")?.addEventListener("click", () => this.randomMatch());
     document.getElementById("btn-friend-search")?.addEventListener("click", () => this.searchFriends());
-    document.getElementById("friend-search")?.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); this.searchFriends(); } });
-    if (getAuthToken() && profile) this.loadFriends();
+    document.getElementById("friend-search")?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); this.searchFriends(); }
+    });
+    if (getAuthToken() && profile) {
+      this.loadFriends();
+      this._friendsTimer = setInterval(() => this.loadFriends(), 8000);
+    }
     document.getElementById("btn-logout")?.addEventListener("click", () => {
       localStorage.removeItem("rami_auth_token");
       localStorage.removeItem("rami_profile");
@@ -167,16 +267,50 @@ const RamiHome = {
       const list = document.getElementById("friend-list");
       const pending = document.getElementById("friend-pending");
       const inv = document.getElementById("friend-invitations");
-      list.innerHTML = data.friends.length ? data.friends.map(f => `<div class="friend-row"><span>👤 <strong>${escapeHtml(f.name)}</strong></span><button class="btn btn-small friend-invite" data-id="${f.id}">Inviter</button></div>`).join("") : `<div class="friends-empty">Aucun ami pour le moment.</div>`;
-      pending.innerHTML = data.pending.length ? `<div class="friends-subtitle">Demandes reçues</div>` + data.pending.map(f => `<div class="friend-row"><span>🤝 <strong>${escapeHtml(f.name)}</strong></span><button class="btn btn-small friend-accept" data-id="${f.id}">Accepter</button></div>`).join("") : "";
-      inv.innerHTML = data.invitations.length ? `<div class="friends-subtitle">Invitations de jeu</div>` + data.invitations.map(i => `<div class="friend-row"><span>🎮 <strong>${escapeHtml(i.from_name)}</strong> vous invite • salon ${escapeHtml(i.room_code)}</span><button class="btn btn-small friend-join" data-code="${escapeHtml(i.room_code)}">Rejoindre</button></div>`).join("") : "";
-      document.querySelectorAll(".friend-accept").forEach(b => b.addEventListener("click", async () => { try { await apiPost("/api/friends/accept", {requester_id:b.dataset.id}); this.loadFriends(); } catch(e){ this.showError(e.message); } }));
-      document.querySelectorAll(".friend-invite").forEach(b => b.addEventListener("click", async () => {
-        const code = prompt("Entrez le code du salon à inviter :"); if (!code) return;
-        try { await apiPost(`/api/room/${code.trim().toUpperCase()}/invite-friend`, {target_id:b.dataset.id}); this.showError("Invitation envoyée."); } catch(e){ this.showError(e.message); }
+      const count = document.getElementById("online-friend-count");
+      const friends = [...(data.friends || [])].sort((a,b) => Number(b.online) - Number(a.online) || String(a.name).localeCompare(String(b.name)));
+      const online = friends.filter(f => f.online).length;
+      if (count) count.textContent = `${online} en ligne`;
+
+      list.innerHTML = friends.length ? friends.map(f => `
+        <div class="friend-row online-friend-row ${f.online ? "" : "offline"}">
+          <span>
+            <strong>${escapeHtml(f.name)}</strong>
+            <small class="friend-state"><i></i>${f.online ? "En ligne" : "Hors ligne"}</small>
+          </span>
+          <button class="btn btn-small friend-invite-mini" data-id="${escapeHtml(f.id)}" ${f.online ? "" : "title=\"Hors ligne\""}>Inviter</button>
+        </div>`).join("") : `<div class="friends-empty">Aucun ami. Ajoutez-en avec la recherche ci-dessous.</div>`;
+
+      pending.innerHTML = data.pending?.length ? `<div class="friends-subtitle">Demandes reçues</div>` + data.pending.map(f => `
+        <div class="friend-row"><span>🤝 <strong>${escapeHtml(f.name)}</strong></span><button class="btn btn-small friend-accept" data-id="${escapeHtml(f.id)}">Accepter</button></div>`).join("") : "";
+      inv.innerHTML = data.invitations?.length ? `<div class="friends-subtitle">Invitations de jeu</div>` + data.invitations.map(i => `
+        <div class="friend-row"><span>🎮 <strong>${escapeHtml(i.from_name)}</strong><small class="friend-id">Salon ${escapeHtml(i.room_code)}</small></span><button class="btn btn-small friend-join" data-code="${escapeHtml(i.room_code)}">Jouer</button></div>`).join("") : "";
+
+      document.querySelectorAll(".friend-accept").forEach(b => b.addEventListener("click", async () => {
+        try { await apiPost("/api/friends/accept", {requester_id:b.dataset.id}); this.loadFriends(); }
+        catch(e){ this.showError(e.message); }
       }));
-      document.querySelectorAll(".friend-join").forEach(b => b.addEventListener("click", () => { document.getElementById("join-code").value=b.dataset.code; document.getElementById("join-code").focus(); window.scrollTo({top:document.getElementById("panel-join").offsetTop,behavior:"smooth"}); }));
+      document.querySelectorAll(".friend-invite").forEach(b => b.addEventListener("click", () => this.createAndInvite(b.dataset.id, b)));
+      document.querySelectorAll(".friend-join").forEach(b => b.addEventListener("click", () => {
+        document.getElementById("join-code").value=b.dataset.code;
+        this.join();
+      }));
     } catch(e) { this.showError(e.message); }
+  },
+
+  async createAndInvite(friendId, button) {
+    if (!requireLogin("/")) return;
+    const original = button?.textContent || "Inviter";
+    if (button) { button.disabled = true; button.textContent = "..."; }
+    try {
+      const room = await apiPost("/api/room/create", {});
+      await apiPost(`/api/room/${room.room_code}/invite-friend`, {target_id: friendId});
+      localStorage.setItem(playerKey(room.room_code), room.player_id);
+      window.location.href = `/salon/${room.room_code}`;
+    } catch (e) {
+      if (button) { button.disabled = false; button.textContent = original; }
+      this.showError(e.message);
+    }
   },
 
   async searchFriends() {
@@ -185,8 +319,12 @@ const RamiHome = {
     try {
       const data = await apiGet(`/api/friends/search?q=${encodeURIComponent(q)}`);
       const el = document.getElementById("friend-search-results");
-      el.innerHTML = data.results.length ? `<div class="friends-subtitle">Résultats</div>` + data.results.map(a => `<div class="friend-row"><span>👤 <strong>${escapeHtml(a.name)}</strong><small class="friend-id">${escapeHtml(a.id || "")}</small></span><button class="btn btn-small friend-add" data-id="${a.id}">Ajouter</button></div>`).join("") : `<div class="friends-empty">Aucun compte trouvé.</div>`;
-      document.querySelectorAll(".friend-add").forEach(b => b.addEventListener("click", async () => { try { await apiPost("/api/friends/request", {target_id:b.dataset.id}); b.textContent="Envoyée"; b.disabled=true; } catch(e){ this.showError(e.message); } }));
+      el.innerHTML = data.results.length ? `<div class="friends-subtitle">Résultats</div>` + data.results.map(a => `
+        <div class="friend-row"><span><strong>${escapeHtml(a.name)}</strong><small class="friend-id">${escapeHtml(a.id || "")}</small></span><button class="btn btn-small friend-add" data-id="${escapeHtml(a.id)}">Ajouter</button></div>`).join("") : `<div class="friends-empty">Aucun compte trouvé.</div>`;
+      document.querySelectorAll(".friend-add").forEach(b => b.addEventListener("click", async () => {
+        try { await apiPost("/api/friends/request", {target_id:b.dataset.id}); b.textContent="Envoyée ✓"; b.disabled=true; }
+        catch(e){ this.showError(e.message); }
+      }));
     } catch(e) { this.showError(e.message); }
   },
 
@@ -194,6 +332,27 @@ const RamiHome = {
     const el = document.getElementById("home-error");
     el.textContent = msg;
     el.hidden = false;
+    clearTimeout(this._errTimer);
+    this._errTimer = setTimeout(() => (el.hidden = true), 3500);
+  },
+
+  async randomMatch() {
+    if (!requireLogin("/")) return;
+    const btn = document.getElementById("btn-random-match");
+    const status = document.getElementById("match-status");
+    const original = btn?.innerHTML;
+    if (btn) { btn.disabled = true; btn.innerHTML = "Recherche d'un salon…"; }
+    if (status) { status.classList.add("searching"); status.innerHTML = `<i></i><span>Recherche d'un joueur en ligne…</span>`; }
+    try {
+      const data = await apiPost("/api/matchmaking/random", {});
+      localStorage.setItem(playerKey(data.room_code), data.player_id);
+      if (status) status.innerHTML = data.matched ? `<i></i><span>Joueur trouvé • salon ${escapeHtml(data.room_code)}</span>` : `<i></i><span>Table créée • en attente d'un joueur</span>`;
+      window.location.href = `/salon/${data.room_code}`;
+    } catch (e) {
+      if (status) status.innerHTML = `<i></i><span>Impossible de trouver une table</span>`;
+      this.showError(e.message);
+      if (btn) { btn.disabled = false; btn.innerHTML = original; }
+    }
   },
 
   async create() {
@@ -202,9 +361,7 @@ const RamiHome = {
       const data = await apiPost("/api/room/create", {});
       localStorage.setItem(playerKey(data.room_code), data.player_id);
       window.location.href = `/salon/${data.room_code}`;
-    } catch (e) {
-      this.showError(e.message);
-    }
+    } catch (e) { this.showError(e.message); }
   },
 
   async join() {
@@ -215,9 +372,7 @@ const RamiHome = {
       const data = await apiPost("/api/room/join", { room_code: code });
       localStorage.setItem(playerKey(data.room_code), data.player_id);
       window.location.href = `/salon/${data.room_code}`;
-    } catch (e) {
-      this.showError(e.message);
-    }
+    } catch (e) { this.showError(e.message); }
   },
 };
 
@@ -1084,3 +1239,6 @@ function escapeHtml(str) {
   div.textContent = str;
   return div.innerHTML;
 }
+
+/* Notifications disponibles sur l'accueil comme dans un salon. */
+window.addEventListener("DOMContentLoaded", () => RamiNotifications.init());
