@@ -747,6 +747,9 @@ const Drag = {
   startX: 0,
   startY: 0,
   THRESHOLD: 6,
+  LONG_PRESS_MS: 280, // sur mobile : maintien court pour glisser, mouvement immédiat = défilement
+  dragTimer: null,
+  lastPointer: null,
 
   makeDraggable(el, cardId, fromZone) {
     el.addEventListener("pointerdown", (e) => this.onPointerDown(e, el, cardId, fromZone));
@@ -760,6 +763,18 @@ const Drag = {
     this.startX = e.clientX;
     this.startY = e.clientY;
     this.pointerId = e.pointerId;
+    this.lastPointer = e;
+
+    // Sur écran tactile, laisser le navigateur faire le scroll horizontal.
+    // Le glisser démarre après un maintien court afin d'éviter le conflit
+    // entre réorganisation des cartes et défilement de la main.
+    if (e.pointerType === "touch") {
+      this.dragTimer = setTimeout(() => {
+        if (!this.pendingEl || this.active) return;
+        const p = this.lastPointer || e;
+        this.startDrag(p);
+      }, this.LONG_PRESS_MS);
+    }
 
     const move = (ev) => this.onPointerMove(ev);
     const up = (ev) => this.onPointerUp(ev, move, up);
@@ -769,10 +784,20 @@ const Drag = {
   },
 
   onPointerMove(e) {
+    this.lastPointer = e;
     const dx = e.clientX - this.startX;
     const dy = e.clientY - this.startY;
     if (!this.active) {
       if (Math.abs(dx) < this.THRESHOLD && Math.abs(dy) < this.THRESHOLD) return;
+
+      // Sur mobile, un déplacement horizontal doit rester un scroll natif.
+      // Si le doigt bouge avant le long-press, on abandonne le drag.
+      if (e.pointerType === "touch") {
+        clearTimeout(this.dragTimer);
+        this.dragTimer = null;
+        this.cleanupPending();
+        return;
+      }
       this.startDrag(e);
     }
     if (this.active) {
@@ -825,6 +850,8 @@ const Drag = {
 
   onPointerUp(e, moveFn, upFn) {
     document.removeEventListener("pointermove", moveFn);
+    clearTimeout(this.dragTimer);
+    this.dragTimer = null;
     if (!this.active) {
       this.cleanupPending();
       return;
@@ -848,9 +875,12 @@ const Drag = {
   },
 
   cleanupPending() {
+    clearTimeout(this.dragTimer);
+    this.dragTimer = null;
     this.pendingEl = null;
     this.pendingCardId = null;
     this.pendingFromZone = null;
+    this.lastPointer = null;
   },
 
   handleDrop(toZone, clientX) {
