@@ -192,6 +192,7 @@ const RamiTable = {
   playerId: null,
   pollTimer: null,
   lastState: null,
+  lastChatSignature: "",
 
   declareMode: false,
   selectedHandId: null,
@@ -244,6 +245,29 @@ const RamiTable = {
     });
 
     document.getElementById("btn-next-round")?.addEventListener("click", () => this.nextRound());
+
+    ["lobby", "table", "finished"].forEach((place) => {
+      const form = document.getElementById(`chat-form-${place}`);
+      const input = document.getElementById(`chat-input-${place}`);
+      if (!form || !input) return;
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const message = input.value.trim();
+        if (!message) return;
+        const send = form.querySelector(".chat-send");
+        if (send) send.disabled = true;
+        try {
+          await apiPost(`/api/room/${this.roomCode}/chat`, { player_id: this.playerId, message });
+          input.value = "";
+          await this.poll();
+          input.focus();
+        } catch (err) {
+          this.showError(err.message);
+        } finally {
+          if (send) send.disabled = false;
+        }
+      });
+    });
 
     document.getElementById("pile-pioche").addEventListener("click", () => this.draw("pioche"));
     document.getElementById("pile-defausse").addEventListener("click", () => this.draw("defausse"));
@@ -468,6 +492,9 @@ const RamiTable = {
     if (state.phase === "playing") this.renderTable(state);
     if (state.phase === "finished") {
       this.renderFinished(state);
+    }
+    this.renderChat(state);
+    if (state.phase === "finished") {
       // On continue de sonder pour voir quand l'hôte prépare la manche suivante.
       if (!this.pollTimer) this.pollTimer = setInterval(() => this.poll(), 1500);
     }
@@ -659,6 +686,24 @@ const RamiTable = {
         discardSlot.innerHTML = `<span class="zone-placeholder">${leftover.length} carte(s) restante(s) à placer</span>`;
       }
     }
+  },
+
+  renderChat(state) {
+    const messages = Array.isArray(state.chat) ? state.chat : [];
+    const signature = messages.map(m => `${m.id || ""}:${m.message || ""}`).join("|");
+    if (signature === this.lastChatSignature) return;
+    this.lastChatSignature = signature;
+    const places = ["lobby", "table", "finished"];
+    places.forEach((place) => {
+      const panel = document.getElementById(`chat-messages-${place}`);
+      if (!panel) return;
+      panel.innerHTML = messages.length ? messages.map((m) => {
+        const mine = m.player_id === this.playerId ? " mine" : "";
+        const when = m.created_at ? new Date(m.created_at * 1000).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"}) : "";
+        return `<div class="chat-message${mine}"><div class="chat-meta"><strong>${escapeHtml(m.player_name || "Joueur")}</strong><span>${when}</span></div><div class="chat-text">${escapeHtml(m.message || "")}</div></div>`;
+      }).join("") : `<div class="chat-empty">Aucun message. Soyez le premier à écrire 👋</div>`;
+      panel.scrollTop = panel.scrollHeight;
+    });
   },
 
   renderFinished(state) {

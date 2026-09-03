@@ -41,6 +41,7 @@ class Room:
         self.turn_index = 0        # index dans self.players
         self.turn_stage = "draw"   # draw | discard
         self.log = []
+        self.chat = []  # messages conservés pendant toute la durée du salon
         self.winner_id = None
         self.win_reason = None
         self.winning_hand = None  # combinaisons de la main gagnante (si victoire par déclaration)
@@ -76,6 +77,25 @@ class Room:
     def _log(self, message):
         self.log.append(message)
         self.log = self.log[-60:]  # garde les 60 derniers événements
+
+    def add_chat_message(self, player_id, message):
+        with self.lock:
+            player = self.get_player(player_id)
+            if player is None:
+                raise ValueError("Joueur introuvable dans ce salon.")
+            text = str(message or "").strip()
+            if not text:
+                raise ValueError("Le message est vide.")
+            if len(text) > 300:
+                raise ValueError("Le message est trop long (300 caractères maximum).")
+            self.chat.append({
+                "id": uuid.uuid4().hex[:12],
+                "player_id": player.id,
+                "player_name": player.name,
+                "message": text,
+                "created_at": time.time(),
+            })
+            self.chat = self.chat[-150:]
 
     # ---------- Démarrage ----------
 
@@ -366,6 +386,7 @@ class Room:
                 "nb_players": len(self.players),
                 "max_players": MAX_PLAYERS,
                 "log": self.log[-25:],
+                "chat": self.chat[-150:],
                 "joker_info": self.joker_info,
                 "deck_count": len(self.deck),
                 "discard_top": self.discard_pile[-1]["card"].to_dict() if self.discard_pile else None,
@@ -435,6 +456,7 @@ class Room:
             "turn_index": self.turn_index,
             "turn_stage": self.turn_stage,
             "log": self.log,
+            "chat": self.chat,
             "winner_id": self.winner_id,
             "win_reason": self.win_reason,
             "winning_hand": self.winning_hand,
@@ -466,6 +488,7 @@ class Room:
         room.turn_index = data.get("turn_index", 0)
         room.turn_stage = data.get("turn_stage", "draw")
         room.log = data.get("log", [])
+        room.chat = data.get("chat", [])[-150:]
         room.winner_id = data.get("winner_id")
         room.win_reason = data.get("win_reason")
         room.winning_hand = data.get("winning_hand")

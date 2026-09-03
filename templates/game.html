@@ -47,6 +47,15 @@
           <button id="btn-start" class="btn btn-primary btn-xl" hidden>Démarrer la partie <b>→</b></button>
           <div class="lobby-tip">Minimum <strong>3 joueurs</strong>. <span id="next-starter-hint"></span></div>
           <button id="btn-leave" type="button" class="leave-link leave-button">Quitter le salon</button>
+
+          <div class="room-chat compact-chat">
+            <div class="chat-head"><strong>💬 Chat du salon</strong><span>messages conservés</span></div>
+            <div id="chat-messages-lobby" class="chat-messages"></div>
+            <form id="chat-form-lobby" class="chat-form">
+              <input id="chat-input-lobby" maxlength="300" autocomplete="off" placeholder="Écrire un message…">
+              <button type="submit" class="btn btn-gold chat-send">Envoyer</button>
+            </form>
+          </div>
         </section>
       </div>
     </div>
@@ -146,6 +155,15 @@
     <div class="below-table-tools">
       <button id="btn-discard-toggle" class="btn-log-toggle">▤ Voir la défausse</button>
     </div>
+
+    <section class="room-chat table-chat">
+      <div class="chat-head"><strong>💬 Chat du salon</strong><span>conservé jusqu'à la fin du salon</span></div>
+      <div id="chat-messages-table" class="chat-messages"></div>
+      <form id="chat-form-table" class="chat-form">
+        <input id="chat-input-table" maxlength="300" autocomplete="off" placeholder="Écrire un message…">
+        <button type="submit" class="btn btn-gold chat-send">Envoyer</button>
+      </form>
+    </section>
     <div id="log-panel" class="log-panel" hidden></div>
     <div id="discard-panel" class="log-panel" hidden></div>
   </section>
@@ -169,6 +187,15 @@
         <div class="zone zone-groupe4"><div class="zone-head"><h3>4E GROUPE</h3></div><div id="fh-groupe4" class="zone-slots read-only"></div></div>
         <div class="zone zone-discard"><div class="zone-head"><h3>DÉFAUSSE</h3></div><div id="fh-discard" class="zone-slots read-only"></div></div>
       </div>
+
+      <section class="room-chat finished-chat">
+        <div class="chat-head"><strong>💬 Chat du salon</strong><span>historique conservé</span></div>
+        <div id="chat-messages-finished" class="chat-messages"></div>
+        <form id="chat-form-finished" class="chat-form">
+          <input id="chat-input-finished" maxlength="300" autocomplete="off" placeholder="Écrire un message…">
+          <button type="submit" class="btn btn-gold chat-send">Envoyer</button>
+        </form>
+      </section>
 
       <div class="finished-actions">
         <button id="btn-next-round" type="button" class="btn btn-gold btn-xl" hidden>🔄 Préparer la prochaine manche</button>

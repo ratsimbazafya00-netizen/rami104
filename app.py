@@ -235,6 +235,30 @@ def api_discard(code):
     return jsonify({"ok": True, "state": room.state_for(player_id)})
 
 
+@app.route("/api/room/<code>/chat", methods=["POST"])
+def api_chat(code):
+    account, error = require_account()
+    if error:
+        return error
+    data = request.get_json(force=True) or {}
+    player_id = data.get("player_id", "")
+    message = data.get("message", "")
+    try:
+        room = room_manager.get_room(code)
+        if room is None:
+            return error_response("Salon introuvable.", 404)
+        player = room.get_player(player_id)
+        if not player or player.account_id != account["id"]:
+            return error_response("Joueur non autorisé.", 403)
+        room.add_chat_message(player_id, message)
+        room_manager.save_room(room)
+    except ValueError as e:
+        return error_response(e)
+    except StorageError as e:
+        return error_response(e, 503)
+    return jsonify({"ok": True, "chat": room.chat[-150:]})
+
+
 @app.route("/api/room/<code>/declare", methods=["POST"])
 def api_declare(code):
     account, error = require_account()

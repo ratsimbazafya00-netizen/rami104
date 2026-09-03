@@ -504,3 +504,23 @@ label{display:block;color:#9db6aa;font-size:.7rem;font-weight:700;margin:0 0 7px
   box-shadow: 0 0 0 3px rgba(255, 215, 80, .95), 0 8px 18px rgba(0,0,0,.28);
   z-index: 5;
 }
+
+/* ---------------- CHAT DU SALON ---------------- */
+.room-chat{width:min(700px,100%);margin:14px auto 0;border:1px solid var(--line);border-radius:14px;background:rgba(2,18,13,.72);overflow:hidden;box-shadow:0 10px 28px rgba(0,0,0,.12)}
+.compact-chat{margin-top:16px;width:100%}
+.chat-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.018)}
+.chat-head strong{font-size:.68rem;color:#c9d9d2}.chat-head span{font-size:.53rem;color:#648177}
+.chat-messages{height:150px;overflow-y:auto;padding:8px 10px;display:flex;flex-direction:column;gap:7px;scroll-behavior:smooth}
+.compact-chat .chat-messages{height:120px}
+.chat-message{align-self:flex-start;max-width:88%;padding:6px 9px;border-radius:10px 10px 10px 3px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.055)}
+.chat-message.mine{align-self:flex-end;border-radius:10px 10px 3px 10px;background:rgba(244,196,0,.075);border-color:rgba(244,196,0,.14)}
+.chat-meta{display:flex;align-items:center;gap:7px;margin-bottom:2px}.chat-meta strong{font-size:.57rem;color:var(--gold-2)}.chat-meta span{font-size:.48rem;color:#567269}
+.chat-text{font-size:.65rem;line-height:1.35;color:#b8c9c2;overflow-wrap:anywhere}.chat-empty{margin:auto;color:#5d786d;font-size:.58rem;font-style:italic}
+.chat-form{display:flex;gap:7px;padding:8px;border-top:1px solid rgba(255,255,255,.06)}
+.chat-form input{min-width:0;flex:1;height:38px;border:1px solid rgba(255,255,255,.08);border-radius:9px;background:rgba(0,0,0,.22);color:var(--cream);padding:0 10px;font:inherit;font-size:.65rem;outline:none}
+.chat-form input:focus{border-color:rgba(244,196,0,.35);box-shadow:0 0 0 2px rgba(244,196,0,.06)}
+.chat-send{height:38px;padding:0 12px;font-size:.6rem;flex:0 0 auto}.chat-send:disabled{opacity:.55}
+.finished-chat{margin:18px auto}.finished-chat .chat-messages{height:170px}
+@media(max-width:520px){
+  .chat-head{padding:9px 10px}.chat-head span{font-size:.48rem}.chat-messages{height:140px}.compact-chat .chat-messages{height:110px}.chat-form{padding:7px}.chat-send{padding:0 10px}
+}
