@@ -195,6 +195,7 @@ const RamiTable = {
 
   declareMode: false,
   selectedHandId: null,
+  selectedHandIds: new Set(),
   assignments: { tri: [], escalier: [], carre: [], groupe4: [] }, // listes de card ids
   handOrder: [], // ordre manuel des cartes en main (glisser-déposer)
 
@@ -321,6 +322,7 @@ const RamiTable = {
   openDeclareBuilder() {
     this.declareMode = true;
     this.selectedHandId = null;
+    this.selectedHandIds = new Set();
     this.assignments = { tri: [], escalier: [], carre: [], groupe4: [] };
     document.getElementById("declare-builder").hidden = false;
     document.getElementById("btn-declare").hidden = true;
@@ -398,14 +400,21 @@ const RamiTable = {
   },
 
   assignSelectedTo(zone) {
-    if (!this.declareMode || !this.selectedHandId) return;
+    if (!this.declareMode) return;
+    const selected = Array.from(this.selectedHandIds || []);
+    if (!selected.length && this.selectedHandId) selected.push(this.selectedHandId);
+    if (!selected.length) return;
     const assigned = this.assignedCardIds();
-    if (assigned.has(this.selectedHandId)) return; // déjà placée
-    if (this.assignments[zone].length >= this.zoneCapacity(zone)) {
-      this.showError("Ce groupe est déjà complet.");
-      return;
+    const capacity = this.zoneCapacity(zone);
+    let added = 0;
+    for (const id of selected) {
+      if (assigned.has(id)) continue;
+      if (this.assignments[zone].length >= capacity) break;
+      this.assignments[zone].push(id);
+      added++;
     }
-    this.assignments[zone].push(this.selectedHandId);
+    if (added < selected.length) this.showError("Certaines cartes n'ont pas pu être placées : le groupe est plein.");
+    this.selectedHandIds.clear();
     this.selectedHandId = null;
     this.renderHandAndZones();
   },
@@ -578,22 +587,27 @@ const RamiTable = {
         el.classList.add("joker-card");
       }
       if (this.declareMode && assigned.has(c.id)) el.classList.add("assigned");
-      if (this.declareMode && this.selectedHandId === c.id) el.classList.add("selected");
+      if (this.declareMode && this.selectedHandIds.has(c.id)) el.classList.add("selected");
       el.textContent = c.label;
       el.dataset.id = c.id;
 
       el.addEventListener("click", () => {
-        if (Drag.justDragged) return; // ignore le clic qui suit un glisser
-        if (this.declareMode) {
-          if (assigned.has(c.id)) {
-            this.unassign(c.id);
-          } else {
-            this.selectedHandId = this.selectedHandId === c.id ? null : c.id;
-            this.renderHandAndZones();
-          }
-        } else if (canAct) {
-          this.discardCard(c.id);
+        if (Drag.justDragged || !this.declareMode) return;
+        if (assigned.has(c.id)) {
+          this.unassign(c.id);
+          return;
         }
+        if (this.selectedHandIds.has(c.id)) this.selectedHandIds.delete(c.id);
+        else this.selectedHandIds.add(c.id);
+        this.selectedHandId = this.selectedHandIds.size === 1 ? Array.from(this.selectedHandIds)[0] : null;
+        this.renderHandAndZones();
+      });
+
+      // En jeu normal, le rejet est volontaire : double-clic / double-tap uniquement.
+      el.addEventListener("dblclick", (ev) => {
+        ev.preventDefault();
+        if (Drag.justDragged || this.declareMode || !canAct) return;
+        this.discardCard(c.id);
       });
       Drag.makeDraggable(el, c.id, "hand");
       handEl.appendChild(el);
@@ -888,6 +902,8 @@ const Drag = {
   handleDrop(toZone, clientX) {
     const cardId = this.cardId;
     const fromZone = this.fromZone;
+    const selected = RamiTable.declareMode && RamiTable.selectedHandIds.has(cardId)
+      ? Array.from(RamiTable.selectedHandIds) : [cardId];
 
     if (toZone === "hand") {
       if (fromZone === "hand") {
@@ -911,8 +927,18 @@ const Drag = {
     }
 
     // toZone est un groupe (tri / escalier / carre / groupe4)
-    if (fromZone === toZone) return; // rien à faire
-    RamiTable.tryAssignCardToZone(cardId, toZone);
+    if (fromZone === toZone) return;
+    if (RamiTable.declareMode && fromZone === "hand" && selected.length > 1) {
+      for (const id of selected) {
+        if (RamiTable.assignments[toZone].length >= RamiTable.zoneCapacity(toZone)) break;
+        RamiTable.tryAssignCardToZone(id, toZone);
+      }
+      RamiTable.selectedHandIds.clear();
+      RamiTable.selectedHandId = null;
+      RamiTable.renderHandAndZones();
+    } else {
+      RamiTable.tryAssignCardToZone(cardId, toZone);
+    }
   },
 };
 

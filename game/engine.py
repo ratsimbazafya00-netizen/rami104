@@ -277,6 +277,9 @@ class Room:
                 p.connected = True
             self.deck = []
             self.discard_pile = []
+            # Nouveau manche = nouveaux journaux : ne pas conserver
+            # l'historique de la manche précédente.
+            self.log = []
             self.joker_info = None
             self.winner_id = None
             self.win_reason = None
