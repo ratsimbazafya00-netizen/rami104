@@ -746,8 +746,8 @@ const Drag = {
   ghostEl: null,
   startX: 0,
   startY: 0,
-  THRESHOLD: 6,
-  LONG_PRESS_MS: 280, // sur mobile : maintien court pour glisser, mouvement immédiat = défilement
+  THRESHOLD: 10,
+  LONG_PRESS_MS: 160, // mobile : maintien très court pour démarrer le glisser, mouvement franc = défilement
   dragTimer: null,
   lastPointer: null,
 
@@ -790,8 +790,10 @@ const Drag = {
     if (!this.active) {
       if (Math.abs(dx) < this.THRESHOLD && Math.abs(dy) < this.THRESHOLD) return;
 
-      // Sur mobile, un déplacement horizontal doit rester un scroll natif.
-      // Si le doigt bouge avant le long-press, on abandonne le drag.
+      // Sur mobile, un déplacement horizontal franc avant le maintien
+      // doit rester un scroll natif. Les petits mouvements sont tolérés
+      // pour faciliter le démarrage du glisser.
+      // Si le doigt bouge franchement avant le long-press, on abandonne le drag.
       if (e.pointerType === "touch") {
         clearTimeout(this.dragTimer);
         this.dragTimer = null;

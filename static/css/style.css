@@ -289,6 +289,7 @@ label{display:block;color:#9db6aa;font-size:.7rem;font-weight:700;margin:0 0 7px
 }
 .hand .card{flex:0 0 55px;width:55px;height:78px;font-size:1rem;scroll-snap-align:start;transition:transform .12s ease,opacity .12s}
 .card.draggable{touch-action:pan-x;user-select:none;cursor:grab;-webkit-user-select:none;-webkit-touch-callout:none}
+.card.draggable:active{cursor:grabbing}
 .hand .card.selected{transform:translateY(-10px);outline:2px solid var(--gold);box-shadow:0 10px 22px rgba(244,196,0,.25)}
 .hand .card.assigned{opacity:.28;filter:saturate(.65)}
 .card.dragging{opacity:.2}
