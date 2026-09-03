@@ -62,6 +62,9 @@ class AccountManager:
             "phone": phone,
             "password_hash": generate_password_hash(password),
             "promo": (promo or "").strip()[:30],
+            "friends": [],
+            "friend_requests": [],
+            "invitations": [],
             "created_at": time.time(),
         }
         self.storage.set(key, json.dumps(account))
@@ -94,6 +97,107 @@ class AccountManager:
         if not hmac.compare_digest(str(account.get("id", "")), str(payload.get("id", ""))):
             return None
         return account
+
+    def _load_by_id(self, account_id):
+        # Le stockage est clé par numéro hashé ; une petite indexation n'existe
+        # pas encore, on conserve donc un index d'amis par compte dans son document.
+        # Les méthodes publiques ci-dessous utilisent les clés connues via phone.
+        return None
+
+    def save_account(self, account):
+        self.storage.set(phone_key(account["phone"]), json.dumps(account))
+
+    def find_accounts(self, query, limit=20):
+        """Recherche des comptes par pseudo ou numéro. Fonctionne avec les
+        stockages disposant de scan/keys et retourne uniquement des données publiques."""
+        q = (query or "").strip().lower()
+        if len(q) < 2:
+            return []
+        found = []
+        keys = []
+        if hasattr(self.storage, "keys"):
+            try:
+                keys = self.storage.keys(ACCOUNT_PREFIX + "*") or []
+            except Exception:
+                keys = []
+        for key in keys:
+            raw = self.storage.get(key)
+            if not raw:
+                continue
+            try:
+                acc = json.loads(raw)
+            except Exception:
+                continue
+            if q in acc.get("name", "").lower() or q in acc.get("phone", "").lower():
+                found.append({"id": acc["id"], "name": acc["name"], "phone": acc["phone"]})
+                if len(found) >= limit:
+                    break
+        return found
+
+    def find_by_id(self, account_id):
+        keys = []
+        if hasattr(self.storage, "keys"):
+            try:
+                keys = self.storage.keys(ACCOUNT_PREFIX + "*") or []
+            except Exception:
+                keys = []
+        for key in keys:
+            raw = self.storage.get(key)
+            if raw:
+                try:
+                    acc = json.loads(raw)
+                    if str(acc.get("id")) == str(account_id):
+                        return acc
+                except Exception:
+                    pass
+        return None
+
+    def add_friend_request(self, account_id, target_id):
+        if str(account_id) == str(target_id):
+            raise ValueError("Vous ne pouvez pas vous ajouter vous-même.")
+        me = self.find_by_id(account_id)
+        target = self.find_by_id(target_id)
+        if not me or not target:
+            raise ValueError("Compte introuvable.")
+        friends = set(me.get("friends", []))
+        requests = set(me.get("friend_requests", []))
+        if target_id in friends:
+            raise ValueError("Vous êtes déjà amis.")
+        if target_id in requests:
+            return target
+        requests.add(target_id)
+        me["friend_requests"] = list(requests)
+        self.save_account(me)
+        return target
+
+    def accept_friend_request(self, account_id, requester_id):
+        me = self.find_by_id(account_id)
+        other = self.find_by_id(requester_id)
+        if not me or not other:
+            raise ValueError("Compte introuvable.")
+        requests = set(me.get("friend_requests", []))
+        if requester_id not in requests:
+            raise ValueError("Demande d'ami introuvable.")
+        requests.remove(requester_id)
+        me["friend_requests"] = list(requests)
+        mf = set(me.get("friends", [])); of = set(other.get("friends", []))
+        mf.add(requester_id); of.add(account_id)
+        me["friends"] = list(mf); other["friends"] = list(of)
+        self.save_account(me); self.save_account(other)
+        return other
+
+    def friends_for(self, account_id):
+        me = self.find_by_id(account_id)
+        if not me:
+            return [], []
+        friends=[]; pending=[]
+        for fid in me.get("friends", []):
+            acc=self.find_by_id(fid)
+            if acc: friends.append({"id":acc["id"],"name":acc["name"]})
+        for rid in me.get("friend_requests", []):
+            acc=self.find_by_id(rid)
+            if acc: pending.append({"id":acc["id"],"name":acc["name"]})
+        return friends, pending
 
 
 account_manager = AccountManager()

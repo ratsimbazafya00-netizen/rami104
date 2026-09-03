@@ -142,11 +142,44 @@ const RamiHome = {
     }
     document.getElementById("btn-create").addEventListener("click", () => this.create());
     document.getElementById("btn-join").addEventListener("click", () => this.join());
+    document.getElementById("btn-friend-search")?.addEventListener("click", () => this.searchFriends());
+    document.getElementById("friend-search")?.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); this.searchFriends(); } });
+    if (getAuthToken() && profile) this.loadFriends();
     document.getElementById("btn-logout")?.addEventListener("click", () => {
       localStorage.removeItem("rami_auth_token");
       localStorage.removeItem("rami_profile");
       window.location.reload();
     });
+  },
+
+  async loadFriends() {
+    if (!getAuthToken()) return;
+    try {
+      const data = await apiGet("/api/friends");
+      const list = document.getElementById("friend-list");
+      const pending = document.getElementById("friend-pending");
+      const inv = document.getElementById("friend-invitations");
+      list.innerHTML = data.friends.length ? data.friends.map(f => `<div class="friend-row"><span>👤 <strong>${escapeHtml(f.name)}</strong></span><button class="btn btn-small friend-invite" data-id="${f.id}">Inviter</button></div>`).join("") : `<div class="friends-empty">Aucun ami pour le moment.</div>`;
+      pending.innerHTML = data.pending.length ? `<div class="friends-subtitle">Demandes reçues</div>` + data.pending.map(f => `<div class="friend-row"><span>🤝 <strong>${escapeHtml(f.name)}</strong></span><button class="btn btn-small friend-accept" data-id="${f.id}">Accepter</button></div>`).join("") : "";
+      inv.innerHTML = data.invitations.length ? `<div class="friends-subtitle">Invitations de jeu</div>` + data.invitations.map(i => `<div class="friend-row"><span>🎮 <strong>${escapeHtml(i.from_name)}</strong> vous invite • salon ${escapeHtml(i.room_code)}</span><button class="btn btn-small friend-join" data-code="${escapeHtml(i.room_code)}">Rejoindre</button></div>`).join("") : "";
+      document.querySelectorAll(".friend-accept").forEach(b => b.addEventListener("click", async () => { try { await apiPost("/api/friends/accept", {requester_id:b.dataset.id}); this.loadFriends(); } catch(e){ this.showError(e.message); } }));
+      document.querySelectorAll(".friend-invite").forEach(b => b.addEventListener("click", async () => {
+        const code = prompt("Entrez le code du salon à inviter :"); if (!code) return;
+        try { await apiPost(`/api/room/${code.trim().toUpperCase()}/invite-friend`, {target_id:b.dataset.id}); this.showError("Invitation envoyée."); } catch(e){ this.showError(e.message); }
+      }));
+      document.querySelectorAll(".friend-join").forEach(b => b.addEventListener("click", () => { document.getElementById("join-code").value=b.dataset.code; document.getElementById("join-name").value=JSON.parse(localStorage.getItem("rami_profile")||"{}").name||""; document.getElementById("join-code").focus(); window.scrollTo({top:document.getElementById("panel-join").offsetTop,behavior:"smooth"}); }));
+    } catch(e) { this.showError(e.message); }
+  },
+
+  async searchFriends() {
+    const q = document.getElementById("friend-search")?.value.trim();
+    if (!q) return;
+    try {
+      const data = await apiGet(`/api/friends/search?q=${encodeURIComponent(q)}`);
+      const el = document.getElementById("friend-search-results");
+      el.innerHTML = data.results.length ? `<div class="friends-subtitle">Résultats</div>` + data.results.map(a => `<div class="friend-row"><span>👤 <strong>${escapeHtml(a.name)}</strong></span><button class="btn btn-small friend-add" data-id="${a.id}">Ajouter</button></div>`).join("") : `<div class="friends-empty">Aucun compte trouvé.</div>`;
+      document.querySelectorAll(".friend-add").forEach(b => b.addEventListener("click", async () => { try { await apiPost("/api/friends/request", {target_id:b.dataset.id}); b.textContent="Envoyée"; b.disabled=true; } catch(e){ this.showError(e.message); } }));
+    } catch(e) { this.showError(e.message); }
   },
 
   showError(msg) {
@@ -233,6 +266,8 @@ const RamiTable = {
 
     document.getElementById("btn-leave")?.addEventListener("click", () => this.leaveRoom());
     document.getElementById("btn-leave-game")?.addEventListener("click", () => this.leaveRoom());
+    document.getElementById("btn-invite-friends")?.addEventListener("click", () => this.toggleFriendInvites());
+    document.getElementById("btn-invite-friends-game")?.addEventListener("click", () => this.toggleFriendInvites());
 
     document.getElementById("btn-start").addEventListener("click", async () => {
       const force = document.getElementById("force-start").checked;
@@ -281,11 +316,55 @@ const RamiTable = {
     });
   },
 
+  async toggleFriendInvites() {
+    const panel = document.getElementById("room-friends-invite");
+    if (!panel) return;
+    if (!panel.hidden) { panel.hidden = true; return; }
+    try {
+      const data = await apiGet("/api/friends");
+      panel.innerHTML = data.friends.length ? `<div class="friends-subtitle">Inviter dans le salon ${escapeHtml(this.roomCode)}</div>` + data.friends.map(f => `<div class="friend-row"><span>👤 ${escapeHtml(f.name)}</span><button class="btn btn-small room-invite-one" data-id="${f.id}">Inviter</button></div>`).join("") : `<div class="friends-empty">Ajoutez des amis depuis l'accueil pour pouvoir les inviter.</div>`;
+      panel.hidden = false;
+      panel.querySelectorAll(".room-invite-one").forEach(b => b.addEventListener("click", async () => {
+        try { await apiPost(`/api/room/${this.roomCode}/invite-friend`, {target_id:b.dataset.id}); b.textContent="Envoyé ✓"; b.disabled=true; } catch(e){ this.showError(e.message); }
+      }));
+    } catch(e) { this.showError(e.message); }
+  },
+
   flashHint(btnId, text) {
     const btn = document.getElementById(btnId);
     const original = btn.textContent;
     btn.textContent = text;
     setTimeout(() => (btn.textContent = original), 1500);
+  },
+
+  async loadFriends() {
+    if (!getAuthToken()) return;
+    try {
+      const data = await apiGet("/api/friends");
+      const list = document.getElementById("friend-list");
+      const pending = document.getElementById("friend-pending");
+      const inv = document.getElementById("friend-invitations");
+      list.innerHTML = data.friends.length ? data.friends.map(f => `<div class="friend-row"><span>👤 <strong>${escapeHtml(f.name)}</strong></span><button class="btn btn-small friend-invite" data-id="${f.id}">Inviter</button></div>`).join("") : `<div class="friends-empty">Aucun ami pour le moment.</div>`;
+      pending.innerHTML = data.pending.length ? `<div class="friends-subtitle">Demandes reçues</div>` + data.pending.map(f => `<div class="friend-row"><span>🤝 <strong>${escapeHtml(f.name)}</strong></span><button class="btn btn-small friend-accept" data-id="${f.id}">Accepter</button></div>`).join("") : "";
+      inv.innerHTML = data.invitations.length ? `<div class="friends-subtitle">Invitations de jeu</div>` + data.invitations.map(i => `<div class="friend-row"><span>🎮 <strong>${escapeHtml(i.from_name)}</strong> vous invite • salon ${escapeHtml(i.room_code)}</span><button class="btn btn-small friend-join" data-code="${escapeHtml(i.room_code)}">Rejoindre</button></div>`).join("") : "";
+      document.querySelectorAll(".friend-accept").forEach(b => b.addEventListener("click", async () => { try { await apiPost("/api/friends/accept", {requester_id:b.dataset.id}); this.loadFriends(); } catch(e){ this.showError(e.message); } }));
+      document.querySelectorAll(".friend-invite").forEach(b => b.addEventListener("click", async () => {
+        const code = prompt("Entrez le code du salon à inviter :"); if (!code) return;
+        try { await apiPost(`/api/room/${code.trim().toUpperCase()}/invite-friend`, {target_id:b.dataset.id}); this.showError("Invitation envoyée."); } catch(e){ this.showError(e.message); }
+      }));
+      document.querySelectorAll(".friend-join").forEach(b => b.addEventListener("click", () => { document.getElementById("join-code").value=b.dataset.code; document.getElementById("join-name").value=JSON.parse(localStorage.getItem("rami_profile")||"{}").name||""; document.getElementById("join-code").focus(); window.scrollTo({top:document.getElementById("panel-join").offsetTop,behavior:"smooth"}); }));
+    } catch(e) { this.showError(e.message); }
+  },
+
+  async searchFriends() {
+    const q = document.getElementById("friend-search")?.value.trim();
+    if (!q) return;
+    try {
+      const data = await apiGet(`/api/friends/search?q=${encodeURIComponent(q)}`);
+      const el = document.getElementById("friend-search-results");
+      el.innerHTML = data.results.length ? `<div class="friends-subtitle">Résultats</div>` + data.results.map(a => `<div class="friend-row"><span>👤 <strong>${escapeHtml(a.name)}</strong></span><button class="btn btn-small friend-add" data-id="${a.id}">Ajouter</button></div>`).join("") : `<div class="friends-empty">Aucun compte trouvé.</div>`;
+      document.querySelectorAll(".friend-add").forEach(b => b.addEventListener("click", async () => { try { await apiPost("/api/friends/request", {target_id:b.dataset.id}); b.textContent="Envoyée"; b.disabled=true; } catch(e){ this.showError(e.message); } }));
+    } catch(e) { this.showError(e.message); }
   },
 
   showError(msg) {

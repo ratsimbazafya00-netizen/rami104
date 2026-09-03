@@ -97,7 +97,93 @@ def api_me():
     account, error = require_account()
     if error:
         return error
-    return jsonify({"ok": True, "account": {"id": account["id"], "name": account["name"], "phone": account["phone"]}})
+    friends, pending = account_manager.friends_for(account["id"])
+    return jsonify({"ok": True, "account": {"id": account["id"], "name": account["name"], "phone": account["phone"]}, "friends": friends, "pending": pending, "invitations": account.get("invitations", [])[-20:]})
+
+
+# ------------------------------------------------------ Amis / invitations -
+
+def public_account(account):
+    return {"id": account["id"], "name": account["name"], "phone": account["phone"]}
+
+@app.route("/api/friends")
+def api_friends():
+    account, error = require_account()
+    if error:
+        return error
+    try:
+        friends, pending = account_manager.friends_for(account["id"])
+        invitations = account.get("invitations", [])[-20:]
+        return jsonify({"ok": True, "friends": friends, "pending": pending, "invitations": invitations})
+    except StorageError as e:
+        return error_response(e, 503)
+
+@app.route("/api/friends/search")
+def api_friends_search():
+    account, error = require_account()
+    if error:
+        return error
+    try:
+        results = [a for a in account_manager.find_accounts(request.args.get("q", ""), 20) if a["id"] != account["id"]]
+        return jsonify({"ok": True, "results": results})
+    except StorageError as e:
+        return error_response(e, 503)
+
+@app.route("/api/friends/request", methods=["POST"])
+def api_friend_request():
+    account, error = require_account()
+    if error:
+        return error
+    data = request.get_json(force=True) or {}
+    try:
+        target = account_manager.add_friend_request(account["id"], str(data.get("target_id", "")))
+        return jsonify({"ok": True, "target": public_account(target)})
+    except ValueError as e:
+        return error_response(e)
+    except StorageError as e:
+        return error_response(e, 503)
+
+@app.route("/api/friends/accept", methods=["POST"])
+def api_friend_accept():
+    account, error = require_account()
+    if error:
+        return error
+    data = request.get_json(force=True) or {}
+    try:
+        other = account_manager.accept_friend_request(account["id"], str(data.get("requester_id", "")))
+        return jsonify({"ok": True, "friend": public_account(other)})
+    except ValueError as e:
+        return error_response(e)
+    except StorageError as e:
+        return error_response(e, 503)
+
+@app.route("/api/room/<code>/invite-friend", methods=["POST"])
+def api_invite_friend(code):
+    account, error = require_account()
+    if error:
+        return error
+    data = request.get_json(force=True) or {}
+    target_id = str(data.get("target_id", ""))
+    try:
+        room = room_manager.get_room(code)
+        if room is None:
+            return error_response("Salon introuvable.", 404)
+        player = next((p for p in room.players if p.account_id == account["id"]), None)
+        if not player:
+            return error_response("Vous n'êtes pas inscrit dans ce salon.", 403)
+        friends, _ = account_manager.friends_for(account["id"])
+        if not any(str(f["id"]) == target_id for f in friends):
+            return error_response("Vous devez être amis pour envoyer une invitation.")
+        target = account_manager.find_by_id(target_id)
+        if not target:
+            return error_response("Ami introuvable.")
+        invs = target.get("invitations", [])
+        invs.append({"id": __import__("uuid").uuid4().hex[:12], "room_code": room.code, "from_id": account["id"], "from_name": account["name"], "created_at": __import__("time").time()})
+        target["invitations"] = invs[-20:]
+        account_manager.save_account(target)
+        return jsonify({"ok": True})
+    except StorageError as e:
+        return error_response(e, 503)
 
 
 # --------------------------------------------------------------- API ------
@@ -135,6 +221,11 @@ def api_join_room():
         if room is None:
             return error_response("Salon introuvable.", 404)
         player = room.add_player(account["name"], account_id=account["id"])
+        # Une invitation correspondant à ce salon est consommée à l'entrée.
+        fresh = account_manager.find_by_id(account["id"])
+        if fresh:
+            fresh["invitations"] = [i for i in fresh.get("invitations", []) if str(i.get("room_code", "")).upper() != room.code]
+            account_manager.save_account(fresh)
         room_manager.save_room(room)
     except ValueError as e:
         return error_response(e)

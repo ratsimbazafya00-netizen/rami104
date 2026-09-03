@@ -46,6 +46,8 @@
           </label>
           <button id="btn-start" class="btn btn-primary btn-xl" hidden>Démarrer la partie <b>→</b></button>
           <div class="lobby-tip">Minimum <strong>3 joueurs</strong>. <span id="next-starter-hint"></span></div>
+          <button id="btn-invite-friends" type="button" class="btn btn-secondary btn-small-wide">👥 Inviter mes amis</button>
+          <div id="room-friends-invite" class="room-friends-invite" hidden></div>
           <button id="btn-leave" type="button" class="leave-link leave-button">Quitter le salon</button>
 
           <div class="room-chat compact-chat">
@@ -66,7 +68,7 @@
     <header class="game-topbar">
       <a href="/" class="brand-mini"><span>R</span> RAMI 104</a>
       <div class="game-room">SALON <strong>{{ room_code }}</strong></div>
-      <div class="game-top-actions"><button id="btn-log-toggle" class="top-action" title="Journal">☷ <span>Journal</span></button><button id="btn-leave-game" class="top-action danger" type="button" title="Quitter le salon">Quitter</button></div>
+      <div class="game-top-actions"><button id="btn-invite-friends-game" class="top-action" type="button" title="Inviter des amis">👥</button><button id="btn-log-toggle" class="top-action" title="Journal">☷ <span>Journal</span></button><button id="btn-leave-game" class="top-action danger" type="button" title="Quitter le salon">Quitter</button></div>
     </header>
 
     <div class="table-status">

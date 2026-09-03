@@ -55,6 +55,10 @@ class InMemoryStorage:
     def delete(self, key):
         self._data.pop(key, None)
 
+    def keys(self, pattern="*"):
+        import fnmatch
+        return [k for k in self._data if fnmatch.fnmatch(k, pattern)]
+
     def is_persistent(self):
         return False
 
@@ -94,6 +98,10 @@ class UpstashRestStorage:
     def delete(self, key):
         self._request(f"del/{urllib.parse.quote(key, safe='')}")
 
+    def keys(self, pattern="*"):
+        result = self._request(f"keys/{urllib.parse.quote(pattern, safe='*')}")
+        return result.get("result") or []
+
     def is_persistent(self):
         return True
 
@@ -124,6 +132,12 @@ class RedisUrlStorage:
     def delete(self, key):
         try:
             self._client.delete(key)
+        except Exception as e:  # noqa: BLE001
+            raise StorageError(f"Erreur de connexion au stockage persistant : {e}") from e
+
+    def keys(self, pattern="*"):
+        try:
+            return list(self._client.scan_iter(match=pattern))
         except Exception as e:  # noqa: BLE001
             raise StorageError(f"Erreur de connexion au stockage persistant : {e}") from e
 

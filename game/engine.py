@@ -200,6 +200,9 @@ class Room:
 
             if not self.deck:
                 self._end_by_empty_deck()
+                return
+            if self.current_player() and not self.current_player().connected:
+                self._bot_play_current_turn()
 
     def declare(self, player_id, groups_by_id, discard_card_id):
         """
@@ -257,34 +260,85 @@ class Room:
             self._log(f"🏆 {player.name} déclare et GAGNE : {message}")
 
     def leave(self, player_id):
+        """Quitter pendant une manche transforme le joueur en BOT.
+        Le siège reste occupé afin que la partie continue automatiquement.
+        Au lobby/à la fin de manche, le joueur est retiré normalement.
+        """
         with self.lock:
             player = self.get_player(player_id)
             if player is None:
                 raise ValueError("Joueur inconnu.")
+            if self.phase == "playing":
+                player.connected = False
+                was_host = player.id == self.host_id
+                player.name = (player.name.replace(" [BOT]", "") + " [BOT]")[:20]
+                self._log(f"🤖 {player.name} est remplacé automatiquement par l'ordinateur.")
+                if was_host:
+                    winner = self.get_player(self.last_winner_id) if self.last_winner_id else None
+                    candidates = [p for p in self.players if p.id != player.id]
+                    new_host = winner if winner and winner.id != player.id else (candidates[0] if candidates else None)
+                    if new_host:
+                        self.host_id = new_host.id
+                        self._log(f"👑 {new_host.name} devient le nouvel hôte.")
+                # Si le joueur qui part est celui dont c'est le tour, le BOT joue
+                # immédiatement pour éviter de bloquer les autres joueurs.
+                if self.current_player() and self.current_player().id == player.id:
+                    self._bot_play_current_turn()
+                return True
+
             was_host = player.id == self.host_id
             leaving_index = self.players.index(player)
             old_turn_index = self.turn_index
             self.players.remove(player)
             if self.last_winner_id == player.id:
                 self.last_winner_id = None
-            # Réattribue les sièges sans changer l'ordre relatif des joueurs restants.
             for i, p in enumerate(self.players):
                 p.seat = i
             if not self.players:
-                raise ValueError("Le salon est vide.")
+                self.host_id = None
+                return True
             if was_host:
-                # Priorité au gagnant de la dernière manche, conformément à la règle.
                 winner = self.get_player(self.last_winner_id) if self.last_winner_id else None
                 self.host_id = winner.id if winner else self.players[0].id
                 self._log(f"👑 {self.get_player(self.host_id).name} devient le nouvel hôte.")
-            # Conserve le joueur suivant lorsque quelqu'un quitte pendant une partie.
-            if leaving_index < old_turn_index:
-                self.turn_index = old_turn_index - 1
-            elif leaving_index == old_turn_index:
-                self.turn_index = leaving_index % len(self.players)
-            else:
-                self.turn_index = old_turn_index % len(self.players)
+            if self.phase != "playing":
+                self.turn_index = min(old_turn_index, len(self.players) - 1)
             return True
+
+    def _bot_play_current_turn(self):
+        """Fait jouer automatiquement le BOT dont c'est le tour.
+        Le bot pioche puis jette une carte au hasard. Répète si plusieurs
+        joueurs BOT consécutifs doivent jouer.
+        """
+        safety = max(1, len(self.players) * 2)
+        while self.phase == "playing" and safety > 0:
+            safety -= 1
+            player = self.current_player()
+            if not player or player.connected:
+                return
+            if self.turn_stage == "draw":
+                if self.deck:
+                    card = self.deck.pop()
+                    player.hand.append(card)
+                    self._log(f"🤖 {player.name} pioche automatiquement dans le sabot.")
+                    self.turn_stage = "discard"
+                else:
+                    self._end_by_empty_deck()
+                    return
+            if self.turn_stage == "discard":
+                if not player.hand:
+                    self._advance_turn()
+                    continue
+                card = player.hand.pop()  # carte aléatoire déterministe simple après mélange
+                self.discard_pile.append({"card": card, "player_id": player.id, "player_name": player.name})
+                self._log(f"🤖 {player.name} défausse automatiquement une carte.")
+                self._advance_turn()
+                if not self.deck:
+                    self._end_by_empty_deck()
+                    return
+            if self.current_player() and not self.current_player().connected:
+                continue
+            return
 
     def prepare_next_round(self, requesting_player_id):
         with self.lock:
@@ -376,6 +430,7 @@ class Room:
                     "seat": p.seat,
                     "card_count": len(p.hand),
                     "connected": p.connected,
+                    "is_bot": not p.connected,
                     "is_me": (me is not None and p.id == me.id),
                     "is_host": (p.id == self.host_id),
                 })
