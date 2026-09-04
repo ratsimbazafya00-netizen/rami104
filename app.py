@@ -498,12 +498,47 @@ def api_leave_room(code):
         if not player:
             return error_response("Joueur non autorisé.", 403)
         room.leave(player.id)
-        room_manager.save_room(room)
+        # Un salon sans aucun joueur humain connecté est fermé immédiatement.
+        # Pendant une manche, les joueurs déconnectés deviennent des BOTs pour
+        # laisser la partie continuer ; dès que le dernier humain quitte, le
+        # salon n'a plus de raison d'être conservé.
+        connected_humans = [p for p in room.players if p.connected]
+        if not connected_humans:
+            room_manager.delete_room(room)
+        elif room.players:
+            room_manager.save_room(room)
     except ValueError as e:
         return error_response(e)
     except StorageError as e:
         return error_response(e, 503)
     return jsonify({"ok": True})
+
+
+@app.route("/api/room/<code>/kick", methods=["POST"])
+def api_kick_room_player(code):
+    account, error = require_account()
+    if error:
+        return error
+    data = request.get_json(force=True) or {}
+    player_id = data.get("player_id", "")
+    target_player_id = data.get("target_player_id", "")
+    try:
+        room = room_manager.get_room(code)
+        if room is None:
+            return error_response("Salon introuvable.", 404)
+        player = resolve_player(room, account["id"], player_id, reconnect=False)
+        if not player:
+            return error_response("Joueur non autorisé.", 403)
+        room.kick(player.id, target_player_id)
+        if not room.players:
+            room_manager.delete_room(room)
+            return jsonify({"ok": True, "closed": True})
+        room_manager.save_room(room)
+        return jsonify({"ok": True, "state": room.state_for(player.id)})
+    except ValueError as e:
+        return error_response(e)
+    except StorageError as e:
+        return error_response(e, 503)
 
 
 @app.route("/api/room/<code>/next-round", methods=["POST"])

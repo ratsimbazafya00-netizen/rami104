@@ -773,6 +773,7 @@ const RamiTable = {
       this.renderFinished(state);
     }
     this.renderChat(state);
+    renderLiveHistory(state);
     if (state.phase === "finished") {
       // On continue de sonder pour voir quand l'hôte prépare la manche suivante.
       if (!this.pollTimer) this.pollTimer = setInterval(() => this.poll(), 1500);
@@ -793,7 +794,8 @@ const RamiTable = {
       li.className = "seat-item" + (p ? " filled" : "");
       li.innerHTML = `<span class="seat-num">${seat + 1}</span>` +
         (p
-          ? `<span class="seat-name"><strong>${escapeHtml(p.name)}${p.is_me ? " (vous)" : ""}${p.is_host ? " 👑" : ""}</strong><small class="seat-id">ID ${escapeHtml(p.account_id || p.id)}</small></span>`
+          ? `<span class="seat-name"><strong>${escapeHtml(p.name)}${p.is_me ? " (vous)" : ""}${p.is_host ? " 👑" : ""}</strong><small class="seat-id">ID ${escapeHtml(p.account_id || p.id)}</small></span>` +
+            (state.am_i_host && !p.is_me ? `<button type="button" class="btn btn-small kick-player" data-player-id="${escapeHtml(p.id)}" data-player-name="${escapeHtml(p.name.replace(/ \[BOT\]$/, ""))}">Expulser</button>` : "")
           : `<span class="seat-empty">En attente…</span>`);
       list.appendChild(li);
     }
@@ -801,6 +803,24 @@ const RamiTable = {
     const btnStart = document.getElementById("btn-start");
     const forceLabel = document.getElementById("force-start-label");
     const hint = document.getElementById("lobby-hint");
+
+    document.querySelectorAll(".kick-player").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const name = button.dataset.playerName || "ce joueur";
+        if (!confirm(`Expulser ${name} du salon ?`)) return;
+        button.disabled = true;
+        try {
+          await apiPost(`/api/room/${this.roomCode}/kick`, {
+            player_id: this.playerId,
+            target_player_id: button.dataset.playerId,
+          });
+          this.poll();
+        } catch (e) {
+          button.disabled = false;
+          this.showError(e.message);
+        }
+      });
+    });
 
     if (state.am_i_host) {
       btnStart.hidden = false;
@@ -1036,6 +1056,41 @@ const RamiTable = {
   },
 };
 
+// Journal + défausse : rendu à chaque poll pour que les événements
+// apparaissent immédiatement chez tous les joueurs.
+function renderLiveHistory(state) {
+  const logPanel = document.getElementById("log-panel");
+  if (logPanel) {
+    const logs = state?.log || [];
+    logPanel.innerHTML = logs.length
+      ? logs.slice().reverse().map((l) => `<div class="log-row">${escapeHtml(l)}</div>`).join("")
+      : `<div class="log-empty">Aucun événement pour le moment.</div>`;
+    logPanel.scrollTop = 0;
+  }
+
+  const discardPanel = document.getElementById("discard-panel");
+  if (discardPanel) {
+    renderDiscardPanel();
+  }
+
+  const take = state?.last_discard_take;
+  const alert = document.getElementById("discard-take-alert");
+  if (!alert || !take) return;
+
+  if (RamiTable.lastSeenDiscardTakeSeq !== take.seq) {
+    RamiTable.lastSeenDiscardTakeSeq = take.seq;
+    const c = take.card || {};
+    const colorClass = c.color === "Rouge" ? "red" : "black";
+    alert.innerHTML = `<span class="take-icon">🟢</span><span><strong>${escapeHtml(take.player_name)}</strong> a pris la carte <span class="take-card ${colorClass}">${escapeHtml(c.label || "—")}</span> dans la défausse${take.discarded_by ? ` — défaussée par <strong>${escapeHtml(take.discarded_by)}</strong>` : ""}. </span>`;
+    alert.hidden = false;
+    alert.classList.remove("flash");
+    void alert.offsetWidth;
+    alert.classList.add("flash");
+    clearTimeout(RamiTable.discardAlertTimer);
+    RamiTable.discardAlertTimer = setTimeout(() => { alert.hidden = true; }, 6000);
+  }
+}
+
 // Journal (log) + Défausse détaillée — communs à toute la page table
 document.addEventListener("DOMContentLoaded", () => {
   const logToggle = document.getElementById("btn-log-toggle");
@@ -1077,10 +1132,13 @@ function renderDiscardPanel() {
     const colorClass = c.color === "Rouge" ? "red" : "black";
     const jokerClass = state.joker_info && c.rank === state.joker_info.rank && state.joker_info.suits.includes(c.suit)
       ? " joker-card" : "";
+    const take = state.last_discard_take;
+    const isLatestTake = !!take && take.player_id === entry.player_id && take.card && take.card.id === c.id;
     const badge = i === 0 ? `<span class="discard-badge">dessus — prenable</span>` : "";
-    return `<div class="discard-row">
+    const takeBadge = isLatestTake ? `<span class="discard-badge">🟢 carte prise</span>` : "";
+    return `<div class="discard-row${isLatestTake ? " latest-take" : ""}">
       <span class="card mini ${colorClass}${jokerClass}">${c.label}</span>
-      <span class="discard-meta">jetée par <strong>${escapeHtml(entry.player_name)}</strong>${badge}</span>
+      <span class="discard-meta">jetée par <strong>${escapeHtml(entry.player_name)}</strong>${badge}${takeBadge}</span>
     </div>`;
   });
   panel.innerHTML = rows.join("");

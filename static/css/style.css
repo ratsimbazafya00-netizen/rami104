@@ -169,7 +169,9 @@ label{display:block;color:#9db6aa;font-size:.7rem;font-weight:700;margin:0 0 7px
 .seat-item.filled{border-color:rgba(244,196,0,.18)}
 .seat-num{width:29px;height:29px;border-radius:9px;display:grid;place-items:center;background:#0c4d37;color:#9fbdb0;font-weight:800;font-size:.7rem}
 .seat-item.filled .seat-num{background:rgba(244,196,0,.14);color:var(--gold)}
-.seat-name{font-weight:800;font-size:.8rem}
+.seat-name{font-weight:800;font-size:.8rem;flex:1;min-width:0}
+.kick-player{flex:0 0 auto;color:#ffd0cb;border-color:rgba(240,90,79,.34);padding:6px 8px;font-size:.62rem}
+.kick-player:hover{color:#fff;border-color:rgba(240,90,79,.65);background:rgba(240,90,79,.12)}
 .seat-empty{color:#5c756a;font-size:.76rem}
 .lobby-action-card{text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center}
 .ready-visual{display:flex;gap:3px;font-size:1.3rem;margin-bottom:15px}
@@ -715,3 +717,47 @@ label{display:block;color:#9db6aa;font-size:.7rem;font-weight:700;margin:0 0 7px
 
 .visibility-badge{justify-self:center;padding:5px 9px;border-radius:999px;background:rgba(56,211,122,.06);border:1px solid rgba(56,211,122,.15);color:#68b98f;font-size:.48rem;font-weight:900;letter-spacing:.08em;white-space:nowrap}.visibility-badge.private{background:rgba(244,196,0,.07);border-color:rgba(244,196,0,.22);color:var(--gold-2)}
 @media(max-width:800px){.game-topbar{grid-template-columns:auto auto 1fr auto}.visibility-badge{display:none}}
+
+/* Prise dans la défausse : événement volontairement très visible. */
+.discard-take-alert {
+  margin: 8px 0 10px;
+  padding: 10px 14px;
+  border: 2px solid rgba(255, 214, 79, .95);
+  border-radius: 12px;
+  background: linear-gradient(90deg, rgba(17, 83, 63, .98), rgba(35, 111, 83, .94));
+  color: #fff;
+  box-shadow: 0 5px 18px rgba(0,0,0,.22);
+  font-size: 14px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.discard-take-alert .take-icon { font-size: 22px; }
+.discard-take-alert .take-card {
+  display: inline-flex;
+  min-width: 34px;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  background: #fff;
+  color: #222;
+  border: 2px solid #e8c84a;
+  font-size: 18px;
+  padding: 0 7px;
+}
+.discard-take-alert .take-card.red { color: #c62828; }
+.discard-take-alert.flash { animation: discardTakeFlash .55s ease-out; }
+@keyframes discardTakeFlash {
+  0% { transform: scale(.985); filter: brightness(1.45); }
+  55% { transform: scale(1.01); }
+  100% { transform: scale(1); filter: brightness(1); }
+}
+
+/* Les journaux et la défausse sont actualisés à chaque poll, même lorsqu'ils sont ouverts. */
+.side-log { overflow-y: auto; }
+.discard-row.latest-take {
+  border: 2px solid rgba(255, 214, 79, .95);
+  background: rgba(255, 214, 79, .10);
+}

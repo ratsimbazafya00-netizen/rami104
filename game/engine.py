@@ -40,6 +40,8 @@ class Room:
         self.phase = "lobby"       # lobby | playing | finished
         self.deck = []             # pioche (sabot)
         self.discard_pile = []     # défausse, dernier élément = dessus de pile
+        self.last_discard_take = None  # dernière prise depuis la défausse, affichée très visiblement
+        self.discard_action_seq = 0
         self.joker_info = None
         self.turn_index = 0        # index dans self.players
         self.turn_stage = "draw"   # draw | discard
@@ -200,7 +202,16 @@ class Room:
                 entry = self.discard_pile.pop()
                 card = entry["card"]
                 player.hand.append(card)
-                self._log(f"{player.name} prend {card.rank}{card.suit} dans la défausse (jetée par {entry['player_name']}).")
+                self.discard_action_seq += 1
+                self.last_discard_take = {
+                    "seq": self.discard_action_seq,
+                    "player_id": player.id,
+                    "player_name": player.name,
+                    "card": card.to_dict(),
+                    "discarded_by": entry["player_name"],
+                    "created_at": time.time(),
+                }
+                self._log(f"🟢 {player.name} PREND {card.rank}{card.suit} DANS LA DÉFAUSSE (jetée par {entry['player_name']}).")
             else:
                 raise ValueError("Source de pioche inconnue.")
 
@@ -280,6 +291,27 @@ class Room:
             self.win_reason = "Main complète (tri + escalier + carré + 4e groupe)."
             self._log(f"🏆 {player.name} déclare et GAGNE : {message}")
 
+    def kick(self, requesting_player_id, target_player_id):
+        """Expulse un joueur uniquement depuis le lobby et uniquement par l'hôte."""
+        with self.lock:
+            if self.phase != "lobby":
+                raise ValueError("L'expulsion est possible uniquement dans le salon d'attente.")
+            if requesting_player_id != self.host_id:
+                raise ValueError("Seul l'hôte peut expulser un joueur.")
+            if requesting_player_id == target_player_id:
+                raise ValueError("L'hôte ne peut pas s'expulser lui-même.")
+            player = self.get_player(target_player_id)
+            if player is None:
+                raise ValueError("Joueur introuvable.")
+            name = player.name.replace(" [BOT]", "")
+            self.players.remove(player)
+            for i, p in enumerate(self.players):
+                p.seat = i
+            self._log(f"🚪 {name} a été expulsé du salon par l'hôte.")
+            if not self.players:
+                self.host_id = None
+            return True
+
     def leave(self, player_id):
         """Quitter pendant une manche transforme le joueur en BOT.
         Le siège reste occupé afin que la partie continue automatiquement.
@@ -305,6 +337,19 @@ class Room:
                 # immédiatement pour éviter de bloquer les autres joueurs.
                 if self.current_player() and self.current_player().id == player.id:
                     self._bot_play_current_turn()
+
+                # Si un seul joueur humain reste connecté, il gagne immédiatement :
+                # les autres ont tous quitté la partie et ne doivent pas devenir
+                # des BOTs qui prolongent artificiellement la manche.
+                connected_humans = [p for p in self.players if p.connected]
+                if len(connected_humans) == 1 and self.phase == "playing":
+                    winner = connected_humans[0]
+                    self.phase = "finished"
+                    self.winner_id = winner.id
+                    self.last_winner_id = winner.id
+                    self.win_reason = "Victoire par abandon : dernier joueur encore présent dans la partie."
+                    self.winning_hand = None
+                    self._log(f"🏆 {winner.name} GAGNE : il est le dernier joueur encore présent dans la partie.")
                 return True
 
             was_host = player.id == self.host_id
@@ -372,6 +417,8 @@ class Room:
                 p.connected = True
             self.deck = []
             self.discard_pile = []
+            self.last_discard_take = None
+            self.discard_action_seq = 0
             # Nouveau manche = nouveaux journaux : ne pas conserver
             # l'historique de la manche précédente.
             self.log = []
@@ -469,6 +516,7 @@ class Room:
                 "joker_info": self.joker_info,
                 "deck_count": len(self.deck),
                 "discard_top": self.discard_pile[-1]["card"].to_dict() if self.discard_pile else None,
+                "last_discard_take": self.last_discard_take,
                 "discard_pile": [
                     {
                         "card": entry["card"].to_dict(),
@@ -534,6 +582,8 @@ class Room:
                 }
                 for entry in self.discard_pile
             ],
+            "last_discard_take": self.last_discard_take,
+            "discard_action_seq": self.discard_action_seq,
             "joker_info": self.joker_info,
             "turn_index": self.turn_index,
             "turn_stage": self.turn_stage,
@@ -568,6 +618,8 @@ class Room:
             }
             for entry in data.get("discard_pile", [])
         ]
+        room.last_discard_take = data.get("last_discard_take")
+        room.discard_action_seq = int(data.get("discard_action_seq", 0) or 0)
         room.joker_info = data.get("joker_info")
         room.turn_index = data.get("turn_index", 0)
         room.turn_stage = data.get("turn_stage", "draw")
@@ -671,6 +723,10 @@ class RoomManager:
         if not raw:
             return None
         return Room.from_state_dict(json.loads(raw))
+
+    def delete_room(self, room_or_code):
+        code = room_or_code.code if hasattr(room_or_code, "code") else str(room_or_code).upper()
+        self.storage.delete(self._key(code))
 
     def save_room(self, room):
         self.storage.set(self._key(room.code), json.dumps(room.to_state_dict()), ex=ROOM_TTL_SECONDS)
