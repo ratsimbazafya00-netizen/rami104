@@ -635,21 +635,52 @@ const RamiTable = {
   },
 
   async draw(source) {
-    if (this.declareMode) return;
+    if (this.declareMode || this.actionInFlight) return;
+    this.actionInFlight = true;
+    this.setActionBusy(true, source === "defausse" ? "Prise de la défausse…" : "Pioche en cours…");
     try {
       await apiPost(`/api/room/${this.roomCode}/draw`, { player_id: this.playerId, source });
-      this.poll();
+      await this.poll();
     } catch (e) {
       this.showError(e.message);
+    } finally {
+      this.actionInFlight = false;
+      this.setActionBusy(false);
     }
   },
 
   async discardCard(cardId) {
+    if (this.actionInFlight) return;
+    this.actionInFlight = true;
+    this.pendingDiscardId = null;
+    this.setActionBusy(true, "Défausse en cours…");
     try {
       await apiPost(`/api/room/${this.roomCode}/discard`, { player_id: this.playerId, card_id: cardId });
-      this.poll();
+      await this.poll();
     } catch (e) {
       this.showError(e.message);
+    } finally {
+      this.actionInFlight = false;
+      this.setActionBusy(false);
+    }
+  },
+
+  setActionBusy(busy, label = "") {
+    this.actionInFlight = !!busy;
+    const drawPile = document.getElementById("pile-pioche");
+    const discardPile = document.getElementById("pile-defausse");
+    if (drawPile) {
+      drawPile.classList.toggle("action-busy", !!busy);
+      drawPile.setAttribute("aria-busy", busy ? "true" : "false");
+    }
+    if (discardPile) {
+      discardPile.classList.toggle("action-busy", !!busy);
+      discardPile.setAttribute("aria-busy", busy ? "true" : "false");
+    }
+    const banner = document.getElementById("turn-banner");
+    if (busy && banner && label) {
+      banner.dataset.previousText = banner.textContent || "";
+      banner.textContent = label;
     }
   },
 
@@ -932,7 +963,7 @@ const RamiTable = {
     const discardEl = document.getElementById("discard-card");
     const topIsJoker = !!(state.discard_top && state.joker_info &&
       state.discard_top.rank === state.joker_info.rank && state.joker_info.suits.includes(state.discard_top.suit));
-    discardButton.disabled = !state.is_my_turn || state.turn_stage !== "draw" || !state.discard_top || topIsJoker;
+    discardButton.disabled = this.actionInFlight || !state.is_my_turn || state.turn_stage !== "draw" || !state.discard_top || topIsJoker;
     discardButton.title = topIsJoker ? "Joker sur la défausse : pioche obligatoire dans le sabot" : "Prendre la défausse";
     if (state.discard_top) {
       discardEl.className = "card " + (state.discard_top.color === "Rouge" ? "red" : "black");
@@ -945,7 +976,7 @@ const RamiTable = {
 
     // Barre d'action
     const actionBar = document.getElementById("action-bar");
-    const canAct = state.is_my_turn && state.turn_stage === "discard" && !this.declareMode;
+    const canAct = !this.actionInFlight && state.is_my_turn && state.turn_stage === "discard" && !this.declareMode;
     actionBar.hidden = !(state.is_my_turn && state.turn_stage === "discard");
     document.getElementById("btn-declare").hidden = this.declareMode;
 
@@ -958,7 +989,7 @@ const RamiTable = {
     const hand = state.my_hand;
     const orderedHand = this.syncHandOrder(hand);
     const assigned = this.declareMode ? this.assignedCardIds() : new Set();
-    const canAct = state.is_my_turn && state.turn_stage === "discard";
+    const canAct = !this.actionInFlight && state.is_my_turn && state.turn_stage === "discard";
     if (!canAct || this.declareMode || !hand.some(c => c.id === this.pendingDiscardId)) {
       this.pendingDiscardId = null;
     }
