@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#061a13">
+<title>Rami 104 — Jouer en ligne</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="home home-compact">
+  <main class="home-shell">
+    <header class="home-topbar">
+      <a class="brand-mini home-brand" href="/" aria-label="Rami 104"><span>R</span> RAMI 104</a>
+      <div class="home-account">
+        <span class="account-status"><i></i><strong id="account-name">Non connecté</strong><small id="account-id-badge"></small></span>
+        <a href="/login" class="auth-link" id="nav-login">↪ Connexion</a>
+        <a href="/inscription" class="auth-link auth-link-primary" id="nav-register">Créer un compte</a>
+        <button type="button" class="auth-link" id="btn-logout" hidden>Déconnexion</button>
+      </div>
+    </header>
+
+    <section class="home-intro">
+      <div>
+        <span class="section-kicker">TABLE MULTIJOUEUR</span>
+        <h1>Jouez au <em>Rami 104</em></h1>
+        <p>Créez une table, rejoignez un salon ou laissez le jeu trouver automatiquement des joueurs en ligne.</p>
+      </div>
+      <div class="home-stats"><span>♠ 5 joueurs</span><span>♦ 104 cartes</span><span>♣ Temps réel</span></div>
+    </section>
+
+    <section class="home-dashboard">
+      <!-- Colonne gauche : créer + rejoindre dans un seul bloc -->
+      <section class="home-card join-create-card">
+        <div class="card-heading compact-heading">
+          <div class="icon-bubble">＋</div>
+          <div><span class="section-kicker">SALON</span><h2>Créer ou rejoindre</h2></div>
+        </div>
+
+        <div class="identity-inline">
+          <div class="identity-icon">♙</div>
+          <div><strong id="create-player-name">Connectez-vous</strong><small>ID : <b id="create-player-id">—</b></small></div>
+        </div>
+
+        <div class="create-row">
+          <div class="visibility-control">
+            <label for="room-visibility">Visibilité</label>
+            <select id="room-visibility">
+              <option value="public">🌐 Public</option>
+              <option value="private">🔒 Privé</option>
+            </select>
+          </div>
+          <button id="btn-create" class="btn btn-primary btn-xl compact-btn"><span>Créer une table</span><b>＋</b></button>
+        </div>
+
+        <div class="mini-or"><span>OU REJOINDRE</span></div>
+
+        <label for="join-code">Code du salon</label>
+        <div class="join-line">
+          <div class="input-shell code-input"><span>#</span><input id="join-code" type="text" maxlength="5" placeholder="A1B2C" autocomplete="off" style="text-transform:uppercase"></div>
+          <button id="btn-join" class="btn btn-secondary join-btn"><span>Rejoindre</span><b>→</b></button>
+        </div>
+        <p class="microcopy compact-copy">Un salon privé n'apparaît jamais dans les salons publics ni dans l'appariement aléatoire.</p>
+      </section>
+
+      <!-- Centre : matchmaking -->
+      <section class="home-card quickmatch-card">
+        <div class="quickmatch-glow"></div>
+        <div class="quickmatch-icon">♟</div>
+        <span class="section-kicker">PARTIE RAPIDE</span>
+        <h2>Appariement aléatoire</h2>
+        <p>Trouvez automatiquement un salon ouvert avec des joueurs en ligne.</p>
+        <button id="btn-random-match" class="btn btn-primary btn-xl quickmatch-btn"><span>Jouer avec un joueur en ligne</span><b>▶</b></button>
+        <div class="match-status" id="match-status"><i></i><span>Recherche de joueurs...</span></div>
+        <div class="public-rooms-head"><span class="section-kicker">SALONS PUBLICS OUVERTS</span><small id="public-room-count">0 table</small></div>
+        <div id="public-rooms-list" class="public-rooms-list"><div class="friends-empty">Chargement…</div></div>
+      </section>
+
+      <!-- Droite : amis connectés -->
+      <section class="home-card online-friends-card">
+        <div class="card-heading compact-heading friends-heading">
+          <div class="icon-bubble green">♣</div>
+          <div><span class="section-kicker">COMMUNAUTÉ</span><h2>Mes amis</h2></div>
+          <span class="online-count" id="online-friend-count">0 en ligne</span>
+        </div>
+        <div id="friend-list" class="friends-list online-friends-list"><div class="friends-empty">Connectez-vous pour voir vos amis.</div></div>
+        <div id="friend-pending" class="friends-list"></div>
+        <div id="friend-invitations" class="friends-list"></div>
+        <div class="friend-search-row compact-search">
+          <input id="friend-search" type="text" maxlength="30" placeholder="Pseudo ou ID joueur…">
+          <button id="btn-friend-search" class="btn btn-secondary btn-search">Chercher</button>
+        </div>
+        <div id="friend-search-results" class="friends-list"></div>
+      </section>
+    </section>
+
+    <div class="home-footer compact-footer">
+      <span>🔒 Salon sécurisé</span><span>•</span><span>104 cartes</span><span>•</span><span>Mobile & PC</span>
+    </div>
+    <p id="home-error" class="error-text" hidden></p>
+  </main>
+<script src="{{ url_for('static', filename='js/game.js') }}"></script>
+<script>RamiHome.init();</script>
+</body>
+</html>
