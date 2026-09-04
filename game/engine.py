@@ -74,6 +74,28 @@ class Room:
                 self._log(f"↩️ {player.name} se reconnecte et reprend le contrôle de son siège.")
             return player
 
+    def mark_disconnected(self, player_id):
+        """Marque un joueur absent comme BOT et fait avancer son tour.
+
+        Les requêtes de polling appellent cette méthode lorsqu'elles
+        constatent que le joueur dont c'est le tour n'a plus envoyé de signe
+        de vie. Le siège est conservé afin qu'il puisse se reconnecter plus
+        tard et reprendre le contrôle.
+        """
+        with self.lock:
+            player = self.get_player(player_id)
+            if player is None:
+                return False
+            if not player.connected:
+                return False
+            player.connected = False
+            if " [BOT]" not in player.name:
+                player.name = player.name + " [BOT]"
+            self._log(f"🤖 {player.name.replace(' [BOT]', '')} est absent : le BOT prend le relais.")
+            if self.phase == "playing" and self.current_player() is player:
+                self._bot_play_current_turn()
+            return True
+
     def add_player(self, name, account_id=None):
         with self.lock:
             if self.phase not in ("lobby", "finished"):
@@ -179,6 +201,13 @@ class Room:
     def current_player(self):
         if not self.players:
             return None
+        # L'index est normalement toujours valide, mais il peut devenir
+        # obsolète après le retrait d'un joueur ou la lecture d'un ancien
+        # état persistant. Le normaliser évite un IndexError sur le polling.
+        try:
+            self.turn_index = int(self.turn_index) % len(self.players)
+        except (TypeError, ValueError):
+            self.turn_index = 0
         return self.players[self.turn_index]
 
     def draw(self, player_id, source):
@@ -247,6 +276,21 @@ class Room:
         with self.lock:
             self._assert_playing()
             player = self._assert_turn(player_id, expected_stage="discard")
+
+            if not isinstance(groups_by_id, dict):
+                raise ValueError("Les groupes de déclaration sont invalides.")
+            required_groups = ("tri", "escalier", "carre", "groupe4")
+            if any(key not in groups_by_id for key in required_groups):
+                raise ValueError("Les quatre groupes sont obligatoires.")
+            if any(key not in required_groups for key in groups_by_id):
+                raise ValueError("Un groupe de déclaration est inconnu.")
+            for key in required_groups:
+                if not isinstance(groups_by_id[key], list) or not all(
+                    isinstance(card_id, str) for card_id in groups_by_id[key]
+                ):
+                    raise ValueError(f"Les cartes du groupe {key} sont invalides.")
+            if not isinstance(discard_card_id, str) or not discard_card_id:
+                raise ValueError("La carte à défausser est invalide.")
 
             hand_by_id = {c.id: c for c in player.hand}
             missing = [cid for cid in list(groups_by_id.get("tri", [])) +
@@ -399,6 +443,12 @@ class Room:
                     player.hand.append(card)
                     self._log(f"🤖 {player.name} pioche automatiquement dans le sabot.")
                     self.turn_stage = "discard"
+                    # Les jokers gagnent aussi automatiquement lorsqu'ils
+                    # sont réunis par un bot. Sans ce contrôle, un bot
+                    # pouvait dépasser le seuil de trois jokers et la manche
+                    # continuait indéfiniment.
+                    if self._check_joker_auto_win():
+                        return
                 else:
                     self._end_by_empty_deck()
                     return
@@ -451,6 +501,9 @@ class Room:
     def _end_by_empty_deck(self):
         self.phase = "finished"
         self.winner_id = None
+        # Une manche nulle ne doit pas réutiliser le gagnant d'une manche
+        # plus ancienne comme premier joueur de la prochaine.
+        self.last_winner_id = None
         self.win_reason = "La pioche est épuisée : partie terminée sans gagnant."
         self._log("La pioche est vide. Fin de la partie (aucun gagnant par mise en main).")
 
@@ -514,6 +567,13 @@ class Room:
                     "is_me": (me is not None and p.id == me.id),
                     "is_host": (p.id == self.host_id),
                 })
+
+            # Un gagnant peut avoir quitté un salon terminé. Ne jamais
+            # dereferencer un joueur absent pendant le polling des autres
+            # joueurs : l'écran de fin doit rester consultable.
+            winner = self.get_player(self.winner_id) if self.winner_id else None
+            host = self.get_player(self.host_id) if self.host_id else None
+            last_winner = self.get_player(self.last_winner_id) if self.last_winner_id else None
             data = {
                 "room_code": self.code,
                 "visibility": self.visibility,
@@ -537,20 +597,21 @@ class Room:
                     for entry in self.discard_pile
                 ],
                 "winner_id": self.winner_id,
-                "winner_name": self.get_player(self.winner_id).name if self.winner_id else None,
+                "winner_name": winner.name if winner else None,
                 "win_reason": self.win_reason,
                 "winning_hand": self.winning_hand,
                 "am_i_host": bool(me and me.id == self.host_id),
                 "host_id": self.host_id,
-                "host_name": self.get_player(self.host_id).name if self.host_id and self.get_player(self.host_id) else None,
+                "host_name": host.name if host else None,
                 "last_winner_id": self.last_winner_id,
-                "last_winner_name": self.get_player(self.last_winner_id).name if self.last_winner_id and self.get_player(self.last_winner_id) else None,
+                "last_winner_name": last_winner.name if last_winner else None,
             }
             if self.phase != "lobby":
-                data["turn_player_id"] = self.current_player().id if self.players else None
-                data["turn_player_name"] = self.current_player().name if self.players else None
+                current = self.current_player()
+                data["turn_player_id"] = current.id if current else None
+                data["turn_player_name"] = current.name if current else None
                 data["turn_stage"] = self.turn_stage
-                data["is_my_turn"] = bool(me and self.current_player() and me.id == self.current_player().id)
+                data["is_my_turn"] = bool(me and current and me.id == current.id)
             if me is not None:
                 data["my_player_id"] = me.id
                 data["my_hand"] = sorted(
@@ -632,7 +693,10 @@ class Room:
         room.last_discard_take = data.get("last_discard_take")
         room.discard_action_seq = int(data.get("discard_action_seq", 0) or 0)
         room.joker_info = data.get("joker_info")
-        room.turn_index = data.get("turn_index", 0)
+        try:
+            room.turn_index = int(data.get("turn_index", 0) or 0)
+        except (TypeError, ValueError):
+            room.turn_index = 0
         room.turn_stage = data.get("turn_stage", "draw")
         room.log = data.get("log", [])
         room.chat = data.get("chat", [])[-150:]

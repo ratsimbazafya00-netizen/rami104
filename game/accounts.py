@@ -22,7 +22,9 @@ PRESENCE_WRITE_INTERVAL = 10  # limite les écritures Redis
 
 
 def normalize_phone(phone):
-    phone = "".join(ch for ch in (phone or "") if ch.isdigit() or ch == "+")
+    # Les données d'une requête HTTP ne sont pas forcément des chaînes.
+    # Convertir explicitement évite qu'un JSON mal formé ne provoque un 500.
+    phone = "".join(ch for ch in str(phone or "") if ch.isdigit() or ch == "+")
     if phone.startswith("00"):
         phone = "+" + phone[2:]
     if not phone.startswith("+") and phone:
@@ -48,12 +50,13 @@ class AccountManager:
     def __init__(self):
         self.storage = build_storage()
         secret = os.environ.get("RAMI_SECRET_KEY") or os.environ.get("SECRET_KEY")
-        # Ne jamais faire planter l'import de Flask si la variable n'a pas
-        # encore été ajoutée dans Vercel. Une clé de secours permet au site
-        # de démarrer ; en production, RAMI_SECRET_KEY doit être configurée
-        # pour conserver une clé stable et sécurisée.
+        # Ne jamais utiliser une clé connue par défaut : sinon n'importe
+        # quelle personne pourrait forger un jeton de connexion. En local,
+        # une clé aléatoire permet quand même de démarrer l'application ;
+        # elle sera renouvelée au redémarrage. En production,
+        # RAMI_SECRET_KEY doit être configurée avec une valeur stable.
         if not secret:
-            secret = "rami104-vercel-first-deploy-change-this-key"
+            secret = secrets.token_urlsafe(32)
         self.signer = URLSafeTimedSerializer(secret, salt=AUTH_SALT)
 
     def _pseudo_in_use(self, name):
@@ -136,6 +139,8 @@ class AccountManager:
         try:
             payload = self.signer.loads(token, max_age=AUTH_MAX_AGE)
         except (BadSignature, SignatureExpired):
+            return None
+        if not isinstance(payload, dict):
             return None
         raw = self.storage.get(phone_key(payload.get("phone", "")))
         if not raw:
@@ -237,24 +242,36 @@ class AccountManager:
         return None
 
     def add_friend_request(self, account_id, target_id):
-        if str(account_id) == str(target_id):
+        """Enregistre une demande chez le destinataire.
+
+        ``friend_requests`` représente les demandes reçues (c'est ce que
+        ``friends_for`` expose dans ``pending``), et non les demandes
+        envoyées. L'ancienne implémentation ajoutait l'ID du destinataire
+        dans le document de l'expéditeur : la demande apparaissait donc chez
+        le mauvais joueur et ne pouvait jamais être acceptée.
+        """
+        account_id = str(account_id)
+        target_id = str(target_id)
+        if account_id == target_id:
             raise ValueError("Vous ne pouvez pas vous ajouter vous-même.")
         me = self.find_by_id(account_id)
         target = self.find_by_id(target_id)
         if not me or not target:
             raise ValueError("Compte introuvable.")
         friends = set(me.get("friends", []))
-        requests = set(me.get("friend_requests", []))
+        requests = set(target.get("friend_requests", []))
         if target_id in friends:
             raise ValueError("Vous êtes déjà amis.")
-        if target_id in requests:
+        if account_id in requests:
             return target, False
-        requests.add(target_id)
-        me["friend_requests"] = list(requests)
-        self.save_account(me)
+        requests.add(account_id)
+        target["friend_requests"] = list(requests)
+        self.save_account(target)
         return target, True
 
     def accept_friend_request(self, account_id, requester_id):
+        account_id = str(account_id)
+        requester_id = str(requester_id)
         me = self.find_by_id(account_id)
         other = self.find_by_id(requester_id)
         if not me or not other:
@@ -264,6 +281,12 @@ class AccountManager:
             raise ValueError("Demande d'ami introuvable.")
         requests.remove(requester_id)
         me["friend_requests"] = list(requests)
+        # Si les deux joueurs s'étaient invités simultanément, supprimer
+        # aussi la demande devenue obsolète chez l'autre joueur.
+        other["friend_requests"] = [
+            rid for rid in other.get("friend_requests", [])
+            if str(rid) != account_id
+        ]
         mf = set(me.get("friends", [])); of = set(other.get("friends", []))
         mf.add(requester_id); of.add(account_id)
         me["friends"] = list(mf); other["friends"] = list(of)
@@ -274,13 +297,24 @@ class AccountManager:
         me = self.find_by_id(account_id)
         if not me:
             return [], []
-        friends=[]; pending=[]
+        friends = []
+        pending = []
         for fid in me.get("friends", []):
-            acc=self.find_by_id(fid)
-            if acc: friends.append({"id":acc["id"],"name":acc["name"],"online":self.is_online(acc),"last_seen":acc.get("last_seen", 0)})
+            acc = self.find_by_id(fid)
+            if acc:
+                friends.append({
+                    "id": acc["id"], "name": acc["name"],
+                    "online": self.is_online(acc),
+                    "last_seen": acc.get("last_seen", 0),
+                })
         for rid in me.get("friend_requests", []):
-            acc=self.find_by_id(rid)
-            if acc: pending.append({"id":acc["id"],"name":acc["name"],"online":self.is_online(acc),"last_seen":acc.get("last_seen", 0)})
+            acc = self.find_by_id(rid)
+            if acc:
+                pending.append({
+                    "id": acc["id"], "name": acc["name"],
+                    "online": self.is_online(acc),
+                    "last_seen": acc.get("last_seen", 0),
+                })
         return friends, pending
 
 

@@ -101,8 +101,11 @@ def api_me():
     account, error = require_account()
     if error:
         return error
-    friends, pending = account_manager.friends_for(account["id"])
-    return jsonify({"ok": True, "account": {"id": account["id"], "name": account["name"], "phone": account["phone"]}, "friends": friends, "pending": pending, "invitations": account.get("invitations", [])[-20:]})
+    try:
+        friends, pending = account_manager.friends_for(account["id"])
+        return jsonify({"ok": True, "account": {"id": account["id"], "name": account["name"], "phone": account["phone"]}, "friends": friends, "pending": pending, "invitations": account.get("invitations", [])[-20:]})
+    except StorageError as e:
+        return error_response(e, 503)
 
 
 # ------------------------------------------------------ Amis / invitations -
@@ -343,6 +346,28 @@ def resolve_player(room, account_id, player_id="", reconnect=True):
         return None
     return player
 
+
+def run_bot_for_stale_turn(room, active_account_id):
+    """Détecte l'absence du joueur courant lors d'un polling.
+
+    La présence des comptes est déjà rafraîchie par ``require_account``.
+    On ne sonde que le joueur courant pour limiter les lectures du stockage
+    persistant ; quand son tour est joué par le bot, le prochain polling
+    vérifiera le joueur suivant.
+    """
+    if room.phase != "playing":
+        return
+    current = room.current_player()
+    if not current or not current.account_id or current.account_id == active_account_id:
+        return
+    try:
+        current_account = account_manager.find_by_id(current.account_id)
+    except StorageError:
+        return
+    if current_account and not account_manager.is_online(current_account):
+        room.mark_disconnected(current.id)
+
+
 @app.route("/api/room/<code>/state")
 def api_room_state(code):
     account, error = require_account()
@@ -358,6 +383,7 @@ def api_room_state(code):
     player = room.reconnect(account["id"], player_id)
     if player is None:
         return error_response("Vous n'êtes pas inscrit dans ce salon.", 403)
+    run_bot_for_stale_turn(room, account["id"])
     room_manager.save_room(room)
     return jsonify({"ok": True, "state": room.state_for(player.id)})
 
@@ -369,7 +395,9 @@ def api_start_room(code):
         return error
     data = request.get_json(force=True) or {}
     player_id = data.get("player_id", "")
-    force = bool(data.get("force", False))
+    # N'accepter que le booléen JSON true : bool("false") vaut True en
+    # Python et permettait à une requête mal formée de forcer le démarrage.
+    force = data.get("force", False) is True
     try:
         room = room_manager.get_room(code)
         if room is None:

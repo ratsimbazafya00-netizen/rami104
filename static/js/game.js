@@ -1,7 +1,19 @@
 /* Rami 104 — client JS (vanilla, polling AJAX, sans dépendance) */
 
 function getAuthToken() {
-  return localStorage.getItem("rami_auth_token") || "";
+  return localStorage.getItem("rami_auth_token") || sessionStorage.getItem("rami_auth_token") || "";
+}
+
+function getAuthProfile() {
+  const raw = localStorage.getItem("rami_profile") || sessionStorage.getItem("rami_profile");
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch (_) {
+    localStorage.removeItem("rami_profile");
+    sessionStorage.removeItem("rami_profile");
+    return null;
+  }
 }
 
 function requireLogin(next = "/") {
@@ -24,6 +36,9 @@ async function apiPost(url, body) {
   const data = await res.json();
   if (res.status === 401) {
     localStorage.removeItem("rami_auth_token");
+    localStorage.removeItem("rami_profile");
+    sessionStorage.removeItem("rami_auth_token");
+    sessionStorage.removeItem("rami_profile");
     window.location.href = `/login?next=${encodeURIComponent(window.location.pathname)}`;
     throw new Error(data.error || "Connexion requise.");
   }
@@ -42,6 +57,9 @@ async function apiGet(url) {
   const data = await res.json();
   if (res.status === 401) {
     localStorage.removeItem("rami_auth_token");
+    localStorage.removeItem("rami_profile");
+    sessionStorage.removeItem("rami_auth_token");
+    sessionStorage.removeItem("rami_profile");
     window.location.href = `/login?next=${encodeURIComponent(window.location.pathname)}`;
     throw new Error(data.error || "Connexion requise.");
   }
@@ -60,9 +78,8 @@ function playerKey(roomCode) {
 
 
 /* ============================================================
-   Authentification — UI uniquement
-   Les comptes réels, mots de passe et paiements seront branchés
-   côté serveur ultérieurement. Aucun mot de passe n'est envoyé ici.
+   Authentification — le serveur valide les comptes et les mots de passe.
+   Le jeton signé est ensuite conservé selon le choix « Se souvenir de moi ».
    ============================================================ */
 const RamiAuth = {
   passwordToggles() {
@@ -85,7 +102,20 @@ const RamiAuth = {
   },
   redirectAfterAuth(defaultPath = "/") {
     const next = new URLSearchParams(window.location.search).get("next") || defaultPath;
-    window.location.href = next.startsWith("/") ? next : defaultPath;
+    // Une URL commençant par "//" est une URL externe (scheme-relative),
+    // malgré startsWith("/"). Les antislashs peuvent aussi être normalisés
+    // en slash par le navigateur. N'autoriser qu'un chemin local.
+    let destination = defaultPath;
+    try {
+      const candidate = new URL(next, window.location.origin);
+      if (next.startsWith("/") && !next.startsWith("//") && !next.includes("\\") &&
+          candidate.origin === window.location.origin) {
+        destination = candidate.pathname + candidate.search + candidate.hash;
+      }
+    } catch (_) {
+      // Une valeur next mal formée retombe simplement sur la page d'accueil.
+    }
+    window.location.href = destination;
   },
   initLogin() {
     this.passwordToggles();
@@ -96,8 +126,13 @@ const RamiAuth = {
       const password = document.getElementById("login-password").value;
       try {
         const data = await apiPost("/api/auth/login", { phone, password });
-        localStorage.setItem("rami_auth_token", data.token);
-        localStorage.setItem("rami_profile", JSON.stringify(data.account));
+        const remember = document.getElementById("remember-me")?.checked ?? true;
+        const storage = remember ? localStorage : sessionStorage;
+        const otherStorage = remember ? sessionStorage : localStorage;
+        otherStorage.removeItem("rami_auth_token");
+        otherStorage.removeItem("rami_profile");
+        storage.setItem("rami_auth_token", data.token);
+        storage.setItem("rami_profile", JSON.stringify(data.account));
         this.message(`Bienvenue ${data.account.name} !`, "success");
         setTimeout(() => this.redirectAfterAuth("/"), 350);
       } catch (err) { this.message(err.message, "error"); }
@@ -231,7 +266,7 @@ const RamiNotifications = {
    ============================================================ */
 const RamiHome = {
   init() {
-    const profile = JSON.parse(localStorage.getItem("rami_profile") || "null");
+    const profile = getAuthToken() ? getAuthProfile() : null;
     const accountName = document.getElementById("account-name");
     const accountIdBadge = document.getElementById("account-id-badge");
     const createName = document.getElementById("create-player-name");
@@ -266,6 +301,8 @@ const RamiHome = {
     document.getElementById("btn-logout")?.addEventListener("click", () => {
       localStorage.removeItem("rami_auth_token");
       localStorage.removeItem("rami_profile");
+      sessionStorage.removeItem("rami_auth_token");
+      sessionStorage.removeItem("rami_profile");
       window.location.reload();
     });
   },
@@ -462,10 +499,15 @@ const RamiTable = {
   bindEvents() {
     document.getElementById("btn-copy-link").addEventListener("click", () => {
       const url = `${window.location.origin}/salon/${this.roomCode}`;
-      navigator.clipboard?.writeText(url).then(
-        () => this.flashHint("btn-copy-link", "Lien copié !"),
-        () => window.prompt("Copiez ce lien :", url)
-      );
+      const copy = navigator.clipboard?.writeText(url);
+      if (copy && typeof copy.then === "function") {
+        copy.then(
+          () => this.flashHint("btn-copy-link", "Lien copié !"),
+          () => window.prompt("Copiez ce lien :", url)
+        );
+      } else {
+        window.prompt("Copiez ce lien :", url);
+      }
     });
 
     document.getElementById("btn-leave")?.addEventListener("click", () => this.leaveRoom());
@@ -716,12 +758,16 @@ const RamiTable = {
   tryAssignCardToZone(cardId, zone) {
     if (!this.declareMode) return false;
     const assigned = this.assignedCardIds();
-    if (assigned.has(cardId)) this.unassignSilent(cardId);
-    if (this.assignments[zone].length >= this.zoneCapacity(zone)) {
+    const alreadyInTarget = this.assignments[zone].includes(cardId);
+    // Vérifier la capacité avant de retirer la carte de son groupe
+    // d'origine. Sinon, déplacer une carte vers un groupe plein la faisait
+    // disparaître du constructeur de déclaration.
+    if (!alreadyInTarget && this.assignments[zone].length >= this.zoneCapacity(zone)) {
       this.showError("Ce groupe est déjà complet.");
       this.renderHandAndZones();
       return false;
     }
+    if (assigned.has(cardId)) this.unassignSilent(cardId);
     this.assignments[zone].push(cardId);
     this.selectedHandId = null;
     this.renderHandAndZones();
@@ -920,7 +966,9 @@ const RamiTable = {
     });
 
     // Pioche / défausse
+    const deckButton = document.getElementById("pile-pioche");
     document.getElementById("deck-count").textContent = state.deck_count;
+    deckButton.disabled = !state.is_my_turn || state.turn_stage !== "draw" || state.deck_count <= 0;
     const discardButton = document.getElementById("pile-defausse");
     const discardEl = document.getElementById("discard-card");
     const topIsJoker = !!(state.discard_top && state.joker_info &&

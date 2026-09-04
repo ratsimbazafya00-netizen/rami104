@@ -138,9 +138,14 @@ def validate_full_hand(groupes, joker_info):
     Retourne (bool_valide, message, detail_par_groupe).
     """
     detail = {}
+    if not isinstance(groupes, dict):
+        return False, "Les groupes de déclaration sont invalides.", detail
     toutes = []
     for cle in ("tri", "escalier", "carre", "groupe4"):
-        toutes.extend(groupes.get(cle, []))
+        cartes = groupes.get(cle, [])
+        if not isinstance(cartes, list):
+            return False, f"Le groupe {cle} est invalide.", detail
+        toutes.extend(cartes)
     if len(toutes) != 13:
         return False, f"Il faut exactement 13 cartes réparties dans les 4 groupes (reçu {len(toutes)}).", {}
     if len({c.id for c in toutes}) != 13:
