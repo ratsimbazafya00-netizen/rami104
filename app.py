@@ -498,14 +498,11 @@ def api_leave_room(code):
         if not player:
             return error_response("Joueur non autorisé.", 403)
         room.leave(player.id)
-        # Un salon sans aucun joueur humain connecté est fermé immédiatement.
-        # Pendant une manche, les joueurs déconnectés deviennent des BOTs pour
-        # laisser la partie continuer ; dès que le dernier humain quitte, le
-        # salon n'a plus de raison d'être conservé.
-        connected_humans = [p for p in room.players if p.connected]
-        if not connected_humans:
+        # Un départ volontaire retire réellement le joueur du salon.
+        # Si plus personne ne reste, le salon est supprimé immédiatement.
+        if not room.players:
             room_manager.delete_room(room)
-        elif room.players:
+        else:
             room_manager.save_room(room)
     except ValueError as e:
         return error_response(e)

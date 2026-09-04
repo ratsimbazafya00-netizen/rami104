@@ -129,9 +129,10 @@ nécessite aucune dépendance supplémentaire.
 ## Limites connues / pistes d'amélioration
 
 - État des parties en mémoire (pas de persistance si le serveur redémarre).
-- Pas de reconnexion automatique si un joueur ferme son onglet en cours de
-  main autre que via le `player_id` stocké dans `localStorage` du
-  téléphone (revenir sur le même lien suffit à se reconnecter).
+- Un clic explicite sur « Quitter le salon » retire définitivement le joueur
+  de la manche en cours : il ne devient pas un BOT et ne peut pas reprendre
+  cette manche en revenant sur le lien. Une coupure technique sans clic sur
+  « Quitter » conserve le siège afin de permettre la reconnexion.
 - Pour un déploiement hors réseau local (joueurs sur des réseaux
   différents), il faudrait héberger le serveur sur une machine accessible
   publiquement (ex. Render, Railway, VPS) plutôt qu'en local.
@@ -145,7 +146,9 @@ nécessite aucune dépendance supplémentaire.
 - Chaque `Room` possède `visibility` (`public` ou `private`) et `round_number`.
 - Les salons privés ne sont jamais proposés par l'appariement aléatoire ni par `/api/rooms/public`. Ils restent accessibles avec leur code ou via une invitation directe.
 - L'accueil permet de choisir Public / Privé lors de la création et affiche les salons publics ouverts.
-- `Room.reconnect()` restaure automatiquement le contrôle d'un siège BOT lorsqu'un joueur revient avec son compte. `resolve_player()` est utilisé par les routes d'état et d'actions.
+- `Room.reconnect()` peut restaurer un siège encore présent (notamment après une
+  coupure technique). Un départ volontaire via « Quitter » supprime le siège,
+  donc le joueur ne peut pas reprendre la manche en revenant sur le lien.
 - La recherche d'amis accepte le pseudo ou l'ID `R104-...`, ne renvoie jamais le téléphone et déduplique les comptes malgré les différents index de stockage.
 - Le bot choisit désormais sa carte de défausse aléatoirement.
 - Le numéro de manche est incrémenté au démarrage de chaque manche et affiché sous la forme `MANCHE N`.

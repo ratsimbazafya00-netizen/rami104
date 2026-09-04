@@ -27,7 +27,11 @@ async function apiPost(url, body) {
     window.location.href = `/login?next=${encodeURIComponent(window.location.pathname)}`;
     throw new Error(data.error || "Connexion requise.");
   }
-  if (!data.ok) throw new Error(data.error || "Erreur inconnue");
+  if (!data.ok) {
+    const err = new Error(data.error || "Erreur inconnue");
+    err.status = res.status;
+    throw err;
+  }
   return data;
 }
 
@@ -41,7 +45,11 @@ async function apiGet(url) {
     window.location.href = `/login?next=${encodeURIComponent(window.location.pathname)}`;
     throw new Error(data.error || "Connexion requise.");
   }
-  if (!data.ok) throw new Error(data.error || "Erreur inconnue");
+  if (!data.ok) {
+    const err = new Error(data.error || "Erreur inconnue");
+    err.status = res.status;
+    throw err;
+  }
   return data;
 }
 
@@ -581,17 +589,41 @@ const RamiTable = {
       }
       this.render(data.state);
     } catch (e) {
+      // Après un départ volontaire, le joueur n'est plus membre du salon.
+      // Ne pas laisser l'écran de jeu figé : arrêter le polling et revenir
+      // immédiatement à l'accueil.
+      if (e.status === 403 || e.status === 404) {
+        clearInterval(this.pollTimer);
+        this.pollTimer = null;
+        localStorage.removeItem(playerKey(this.roomCode));
+        window.location.replace("/");
+        return;
+      }
       this.showError(e.message);
     }
   },
 
   async leaveRoom() {
-    if (!confirm("Quitter ce salon ?")) return;
+    if (!confirm("Quitter ce salon ?\n\nAprès avoir quitté pendant une manche, vous ne pourrez plus reprendre votre place dans cette manche.")) return;
     try {
+      // Stoppe immédiatement les GET d'état pour éviter qu'une requête en
+      // cours ne maintienne visuellement l'ancien plateau.
+      clearInterval(this.pollTimer);
+      this.pollTimer = null;
       await apiPost(`/api/room/${this.roomCode}/leave`, { player_id: this.playerId });
       localStorage.removeItem(playerKey(this.roomCode));
-      window.location.href = "/";
-    } catch (e) { this.showError(e.message); }
+      window.location.replace("/");
+    } catch (e) {
+      // Si le serveur a déjà supprimé le joueur/salon, l'objectif du départ
+      // est déjà atteint : nettoyer le client et retourner à l'accueil.
+      if (e.status === 403 || e.status === 404) {
+        localStorage.removeItem(playerKey(this.roomCode));
+        window.location.replace("/");
+        return;
+      }
+      if (!this.pollTimer) this.pollTimer = setInterval(() => this.poll(), 1500);
+      this.showError(e.message);
+    }
   },
 
   async nextRound() {

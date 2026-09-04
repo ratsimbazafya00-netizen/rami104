@@ -313,62 +313,73 @@ class Room:
             return True
 
     def leave(self, player_id):
-        """Quitter pendant une manche transforme le joueur en BOT.
-        Le siège reste occupé afin que la partie continue automatiquement.
-        Au lobby/à la fin de manche, le joueur est retiré normalement.
+        """Quitte réellement le salon.
+
+        Un clic explicite sur « Quitter » retire définitivement le joueur du
+        salon pour cette manche : il ne devient PAS un BOT et son ancien
+        player_id ne permet plus de reprendre sa place. Une reconnexion
+        technique sans clic sur « Quitter » peut toujours utiliser
+        ``reconnect()`` si le siège existe encore.
         """
         with self.lock:
             player = self.get_player(player_id)
             if player is None:
-                raise ValueError("Joueur inconnu.")
-            if self.phase == "playing":
-                player.connected = False
-                was_host = player.id == self.host_id
-                player.name = (player.name.replace(" [BOT]", "") + " [BOT]")[:20]
-                self._log(f"🤖 {player.name} est remplacé automatiquement par l'ordinateur.")
-                if was_host:
-                    winner = self.get_player(self.last_winner_id) if self.last_winner_id else None
-                    candidates = [p for p in self.players if p.id != player.id]
-                    new_host = winner if winner and winner.id != player.id else (candidates[0] if candidates else None)
-                    if new_host:
-                        self.host_id = new_host.id
-                        self._log(f"👑 {new_host.name} devient le nouvel hôte.")
-                # Si le joueur qui part est celui dont c'est le tour, le BOT joue
-                # immédiatement pour éviter de bloquer les autres joueurs.
-                if self.current_player() and self.current_player().id == player.id:
-                    self._bot_play_current_turn()
+                raise ValueError("Joueur inconnu ou déjà sorti du salon.")
 
-                # Si un seul joueur humain reste connecté, il gagne immédiatement :
-                # les autres ont tous quitté la partie et ne doivent pas devenir
-                # des BOTs qui prolongent artificiellement la manche.
-                connected_humans = [p for p in self.players if p.connected]
-                if len(connected_humans) == 1 and self.phase == "playing":
-                    winner = connected_humans[0]
+            was_host = player.id == self.host_id
+            leaving_index = self.players.index(player)
+            old_turn_index = self.turn_index
+            was_current = self.phase == "playing" and leaving_index == old_turn_index
+
+            # Retrait réel : aucun BOT n'est créé et l'ancien siège disparaît.
+            self.players.remove(player)
+            if self.last_winner_id == player.id:
+                self.last_winner_id = None
+
+            for i, p in enumerate(self.players):
+                p.seat = i
+
+            self._log(f"🚪 {player.name.replace(' [BOT]', '')} a quitté le salon.")
+
+            if not self.players:
+                self.host_id = None
+                return True
+
+            # Transfert de l'hôte si nécessaire.
+            if was_host:
+                winner = self.get_player(self.last_winner_id) if self.last_winner_id else None
+                new_host = winner if winner else self.players[0]
+                self.host_id = new_host.id
+                self._log(f"👑 {new_host.name.replace(' [BOT]', '')} devient le nouvel hôte.")
+
+            if self.phase == "playing":
+                # Un seul joueur encore présent = victoire immédiate par abandon.
+                if len(self.players) == 1:
+                    winner = self.players[0]
+                    winner.connected = True
+                    winner.name = winner.name.replace(" [BOT]", "")[:20]
                     self.phase = "finished"
                     self.winner_id = winner.id
                     self.last_winner_id = winner.id
                     self.win_reason = "Victoire par abandon : dernier joueur encore présent dans la partie."
                     self.winning_hand = None
+                    self.turn_index = 0
+                    self.turn_stage = "draw"
                     self._log(f"🏆 {winner.name} GAGNE : il est le dernier joueur encore présent dans la partie.")
+                    return True
+
+                # Maintient le tour sur le bon joueur après suppression.
+                if was_current:
+                    self.turn_index = leaving_index % len(self.players)
+                    self.turn_stage = "draw"
+                elif leaving_index < old_turn_index:
+                    self.turn_index = old_turn_index - 1
+                else:
+                    self.turn_index = min(old_turn_index, len(self.players) - 1)
                 return True
 
-            was_host = player.id == self.host_id
-            leaving_index = self.players.index(player)
-            old_turn_index = self.turn_index
-            self.players.remove(player)
-            if self.last_winner_id == player.id:
-                self.last_winner_id = None
-            for i, p in enumerate(self.players):
-                p.seat = i
-            if not self.players:
-                self.host_id = None
-                return True
-            if was_host:
-                winner = self.get_player(self.last_winner_id) if self.last_winner_id else None
-                self.host_id = winner.id if winner else self.players[0].id
-                self._log(f"👑 {self.get_player(self.host_id).name} devient le nouvel hôte.")
-            if self.phase != "playing":
-                self.turn_index = min(old_turn_index, len(self.players) - 1)
+            # Lobby / écran de fin : on compacte les sièges et corrige le tour.
+            self.turn_index = min(old_turn_index, len(self.players) - 1)
             return True
 
     def _bot_play_current_turn(self):
