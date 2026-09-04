@@ -102,11 +102,29 @@ def determine_joker(cut_card):
     joker_rank = cut_card.rank
     joker_color = opposite_color(cut_card.color)
     joker_suits = [s for s in SUITS if (s in RED_SUITS) == (joker_color == "Rouge")]
+
+    # Les "faux jokers" sont les cartes du même rang et de la même couleur
+    # que la carte coupée, à l'exception de la carte physique qui vient
+    # d'être retirée du jeu. Elles restent donc dans la pioche / les mains et
+    # restent des cartes normales.
+    false_joker_cards = []
+    for copy_id in (0, 1):
+        card = Card(joker_rank, cut_card.suit, copy_id)
+        if card.id != cut_card.id:
+            false_joker_cards.append(card.to_dict())
+    for suit in SUITS:
+        if suit == cut_card.suit or ((suit in RED_SUITS) != (cut_card.color == "Rouge")):
+            continue
+        # Même couleur que la carte coupée, autre enseigne.
+        for copy_id in (0, 1):
+            false_joker_cards.append(Card(joker_rank, suit, copy_id).to_dict())
+
     return {
         "cut_card": cut_card.to_dict(),
         "rank": joker_rank,
         "color": joker_color,
         "suits": joker_suits,
+        "false_jokers": false_joker_cards,
     }
 
 

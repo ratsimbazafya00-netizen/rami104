@@ -430,6 +430,7 @@ const RamiTable = {
   pollTimer: null,
   lastState: null,
   lastChatSignature: "",
+  pendingDiscardId: null,
 
   declareMode: false,
   selectedHandId: null,
@@ -894,7 +895,13 @@ const RamiTable = {
     // Joker
     const jokerBadge = document.getElementById("joker-badge");
     if (state.joker_info) {
-      jokerBadge.textContent = `Joker : ${state.joker_info.rank} ${state.joker_info.suits.map(suitSymbol).join(" / ")}`;
+      const trueJokers = `${state.joker_info.rank} ${state.joker_info.suits.map(suitSymbol).join(" / ")}`;
+      const falseJokers = (state.joker_info.false_jokers || [])
+        .map(c => `${c.rank}${suitSymbol(c.suit)}`)
+        .join(" ");
+      jokerBadge.innerHTML = `<span class="joker-real">JOKER : <strong>${escapeHtml(trueJokers)}</strong></span>` +
+        `<span class="joker-false">FAUX JOKER : <strong>${escapeHtml(falseJokers || "—")}</strong></span>`;
+      jokerBadge.title = "Les faux jokers sont des cartes normales et ne comptent pas comme jokers.";
     }
 
     // Tour
@@ -952,6 +959,9 @@ const RamiTable = {
     const orderedHand = this.syncHandOrder(hand);
     const assigned = this.declareMode ? this.assignedCardIds() : new Set();
     const canAct = state.is_my_turn && state.turn_stage === "discard";
+    if (!canAct || this.declareMode || !hand.some(c => c.id === this.pendingDiscardId)) {
+      this.pendingDiscardId = null;
+    }
 
     const handEl = document.getElementById("hand");
     handEl.innerHTML = "";
@@ -978,12 +988,32 @@ const RamiTable = {
         this.renderHandAndZones();
       });
 
-      // En jeu normal, le rejet est volontaire : double-clic / double-tap uniquement.
-      el.addEventListener("dblclick", (ev) => {
-        ev.preventDefault();
+      // En jeu normal : un clic sélectionne la carte et affiche un petit
+      // bouton de confirmation directement dessus. Aucun rejet au double-clic.
+      el.addEventListener("click", (ev) => {
         if (Drag.justDragged || this.declareMode || !canAct) return;
-        this.discardCard(c.id);
+        ev.stopPropagation();
+        this.pendingDiscardId = this.pendingDiscardId === c.id ? null : c.id;
+        this.renderHandAndZones();
       });
+
+      if (!this.declareMode && canAct && this.pendingDiscardId === c.id) {
+        el.classList.add("discard-pending");
+        const confirm = document.createElement("button");
+        confirm.type = "button";
+        confirm.className = "discard-confirm";
+        confirm.textContent = "✓";
+        confirm.title = "Confirmer la défausse";
+        confirm.setAttribute("aria-label", `Défausser ${c.label}`);
+        confirm.addEventListener("click", async (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          const id = c.id;
+          this.pendingDiscardId = null;
+          await this.discardCard(id);
+        });
+        el.appendChild(confirm);
+      }
       Drag.makeDraggable(el, c.id, "hand");
       handEl.appendChild(el);
     });

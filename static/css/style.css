@@ -260,7 +260,16 @@ label{display:block;color:#9db6aa;font-size:.7rem;font-weight:700;margin:0 0 7px
   background:rgba(255,255,255,.055);border:1px dashed rgba(255,255,255,.18);color:#78978a;box-shadow:none;
 }
 .card.joker-card{outline:2px solid var(--gold);outline-offset:1px}
+.joker-badge{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px 12px}
+.joker-real{color:var(--gold-2)}
+.joker-false{color:#b7c8c0;font-size:.78em}
+.joker-false strong{color:#e3eee9}
 .pile:active .card{transform:scale(.96)}
+
+/* Confirmation de défausse directement sur la carte */
+.hand .card.discard-pending{outline:2px solid #f4c400;outline-offset:2px;transform:translateY(-5px)}
+.discard-confirm{position:absolute;z-index:5;right:-5px;bottom:-5px;width:24px;height:24px;border:2px solid #fff;border-radius:50%;background:#17834f;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:.8rem;line-height:1;box-shadow:0 3px 8px rgba(0,0,0,.45);cursor:pointer;padding:0;touch-action:manipulation}
+.discard-confirm:active{transform:scale(.92)}
 .table-helper{font-size:.58rem;color:#699181;margin-top:14px}
 
 /* ---------------- ACTION BAR ---------------- */
