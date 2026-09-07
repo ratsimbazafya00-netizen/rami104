@@ -773,3 +773,11 @@ label{display:block;color:#9db6aa;font-size:.7rem;font-weight:700;margin:0 0 7px
 .pile.action-busy{opacity:.62;pointer-events:none;cursor:wait}
 .pile.action-busy::after{content:"";position:absolute;inset:0;cursor:wait}
 .hand .card.discard-pending .discard-confirm{touch-action:manipulation}
+
+/* V7: aucune interface de validation manuelle de main. */
+#declare-builder, #declare-form, #btn-declare, #btn-validate-hand, #validate-hand { display:none !important; }
+\n/* V8 : rangement libre de la main, sans validation manuelle. */
+.hand .card.draggable{touch-action:pan-x;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;cursor:grab}
+.hand .card.draggable:active{cursor:grabbing}
+.hand.drop-target{outline:1px dashed rgba(244,196,0,.28);outline-offset:3px}
+.card-drag-ghost{position:fixed!important;z-index:9999!important;pointer-events:none!important;opacity:.92!important;transform:scale(1.08) rotate(-2deg)!important;box-shadow:0 18px 35px rgba(0,0,0,.55)!important}

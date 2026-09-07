@@ -428,12 +428,15 @@ const RamiTable = {
   roomCode: null,
   playerId: null,
   pollTimer: null,
+  pollInFlight: false,
   lastState: null,
   lastChatSignature: "",
   pendingDiscardId: null,
+  handOrder: [],
+  handDrag: null,
+  suppressNextCardClick: false,
 
   // La déclaration est entièrement automatique côté serveur.
-  handOrder: [], // ordre manuel des cartes en main (glisser-déposer)
 
   async init(roomCode) {
     this.roomCode = roomCode;
@@ -454,7 +457,7 @@ const RamiTable = {
 
     this.bindEvents();
     this.poll();
-    this.pollTimer = setInterval(() => this.poll(), 1500);
+    this.pollTimer = setInterval(() => this.poll(), 650);
   },
 
   bindEvents() {
@@ -574,7 +577,8 @@ const RamiTable = {
     // Une action de jeu vient d'être envoyée : son POST renverra déjà
     // l'état complet. Éviter un GET concurrent qui pourrait ramener un
     // ancien état et donner l'impression que le clic n'a pas fonctionné.
-    if (this.actionInFlight) return;
+    if (this.actionInFlight || this.pollInFlight) return;
+    this.pollInFlight = true;
     try {
       const data = await apiGet(`/api/room/${this.roomCode}/state?player_id=${this.playerId}`);
       this.lastState = data.state;
@@ -595,6 +599,8 @@ const RamiTable = {
         return;
       }
       this.showError(e.message);
+    } finally {
+      this.pollInFlight = false;
     }
   },
 
@@ -631,11 +637,9 @@ const RamiTable = {
   async draw(source) {
     if (this.actionInFlight) return;
     this.actionInFlight = true;
-    this.setActionBusy(true, source === "defausse" ? "Prise de la défausse…" : "Pioche en cours…");
+    this.setActionBusy(true, source === "defausse" ? "Prise…" : "Pioche…");
     try {
-      // Le serveur renvoie immédiatement le nouvel état : pas de second
-      // GET obligatoire après l'action. Cela rend le jeu beaucoup plus fluide.
-      const data = await apiPost(`/api/room/${this.roomCode}/draw`, { player_id: this.playerId, source });
+      const data = await this.actionRequest(`/api/room/${this.roomCode}/draw`, { player_id: this.playerId, source });
       if (data.state) {
         this.lastState = data.state;
         this.render(data.state);
@@ -643,8 +647,10 @@ const RamiTable = {
     } catch (e) {
       this.showError(e.message);
     } finally {
-      this.actionInFlight = false;
       this.setActionBusy(false);
+      this.actionInFlight = false;
+      // Synchronisation légère après l'action, sans attendre le prochain cycle.
+      setTimeout(() => this.poll(), 60);
     }
   },
 
@@ -652,9 +658,9 @@ const RamiTable = {
     if (this.actionInFlight) return;
     this.actionInFlight = true;
     this.pendingDiscardId = null;
-    this.setActionBusy(true, "Défausse en cours…");
+    this.setActionBusy(true, "Défausse…");
     try {
-      const data = await apiPost(`/api/room/${this.roomCode}/discard`, { player_id: this.playerId, card_id: cardId });
+      const data = await this.actionRequest(`/api/room/${this.roomCode}/discard`, { player_id: this.playerId, card_id: cardId });
       if (data.state) {
         this.lastState = data.state;
         this.render(data.state);
@@ -662,8 +668,42 @@ const RamiTable = {
     } catch (e) {
       this.showError(e.message);
     } finally {
-      this.actionInFlight = false;
       this.setActionBusy(false);
+      this.actionInFlight = false;
+      setTimeout(() => this.poll(), 60);
+    }
+  },
+
+  async actionRequest(url, body) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(getAuthToken() ? { "Authorization": `Bearer ${getAuthToken()}` } : {}),
+        },
+        body: JSON.stringify(body || {}),
+        signal: controller.signal,
+      });
+      const data = await res.json();
+      if (res.status === 401) {
+        localStorage.removeItem("rami_auth_token");
+        window.location.href = `/login?next=${encodeURIComponent(window.location.pathname)}`;
+        throw new Error(data.error || "Connexion requise.");
+      }
+      if (!data.ok) {
+        const err = new Error(data.error || "Erreur inconnue");
+        err.status = res.status;
+        throw err;
+      }
+      return data;
+    } catch (e) {
+      if (e.name === "AbortError") throw new Error("Le serveur met trop de temps à répondre. Réessayez.");
+      throw e;
+    } finally {
+      clearTimeout(timer);
     }
   },
 
@@ -848,31 +888,42 @@ const RamiTable = {
     const state = this.lastState;
     if (!state || !state.my_hand) return;
     const hand = state.my_hand;
-    const orderedHand = this.syncHandOrder(hand);
+    const ids = new Set(hand.map(c => c.id));
+
+    // L'ordre est purement visuel : le serveur garde toujours la vraie main.
+    // On conserve l'ordre choisi par le joueur et on ajoute les nouvelles
+    // cartes à la fin après une pioche.
+    this.handOrder = this.handOrder.filter(id => ids.has(id));
+    hand.forEach(c => { if (!this.handOrder.includes(c.id)) this.handOrder.push(c.id); });
+    const byId = new Map(hand.map(c => [c.id, c]));
+    const orderedHand = this.handOrder.map(id => byId.get(id)).filter(Boolean);
+
     const canAct = !this.actionInFlight && state.is_my_turn && state.turn_stage === "discard";
-    if (!canAct || !hand.some(c => c.id === this.pendingDiscardId)) {
-      this.pendingDiscardId = null;
-    }
+    if (!canAct || !hand.some(c => c.id === this.pendingDiscardId)) this.pendingDiscardId = null;
 
     const handEl = document.getElementById("hand");
     handEl.innerHTML = "";
+    handEl.classList.remove("drop-target");
+
     orderedHand.forEach((c) => {
       const el = document.createElement("div");
       el.className = "card draggable " + (c.color === "Rouge" ? "red" : "black");
-      if (state.joker_info && c.rank === state.joker_info.rank && state.joker_info.suits.includes(c.suit)) {
-        el.classList.add("joker-card");
-      }
+      if (state.joker_info && c.rank === state.joker_info.rank && state.joker_info.suits.includes(c.suit)) el.classList.add("joker-card");
       el.textContent = c.label;
       el.dataset.id = c.id;
+      el.title = "Glissez pour réorganiser votre main";
 
-      // En jeu normal : un clic sélectionne la carte et affiche un petit
-      // bouton de confirmation directement dessus.
-      el.addEventListener("click", (ev) => {
-        if (Drag.justDragged || !canAct) return;
-        ev.stopPropagation();
-        this.pendingDiscardId = this.pendingDiscardId === c.id ? null : c.id;
-        this.renderHandAndZones();
-      });
+      if (canAct) {
+        el.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          if (this.suppressNextCardClick) {
+            this.suppressNextCardClick = false;
+            return;
+          }
+          this.pendingDiscardId = this.pendingDiscardId === c.id ? null : c.id;
+          this.renderHandAndZones();
+        });
+      }
 
       if (canAct && this.pendingDiscardId === c.id) {
         el.classList.add("discard-pending");
@@ -880,20 +931,112 @@ const RamiTable = {
         confirm.type = "button";
         confirm.className = "discard-confirm";
         confirm.textContent = "✓";
-        confirm.title = "Confirmer la défausse";
+        confirm.title = "Défausser";
         confirm.setAttribute("aria-label", `Défausser ${c.label}`);
-        confirm.addEventListener("click", async (ev) => {
+        confirm.addEventListener("pointerdown", (ev) => ev.stopPropagation());
+        confirm.addEventListener("click", (ev) => {
           ev.preventDefault();
           ev.stopPropagation();
-          await this.discardCard(c.id);
+          this.discardCard(c.id);
         });
         el.appendChild(confirm);
       }
-      Drag.makeDraggable(el, c.id, "hand");
+
+      this.bindCardReorder(el, handEl);
       handEl.appendChild(el);
     });
   },
 
+  bindCardReorder(el, handEl) {
+    let timer = null;
+    let dragging = false;
+    let startX = 0;
+    let startY = 0;
+    let ghost = null;
+    const cardId = el.dataset.id;
+
+    const cleanup = () => {
+      clearTimeout(timer);
+      timer = null;
+      if (ghost) ghost.remove();
+      ghost = null;
+      document.querySelectorAll(".hand .card.dragging").forEach(x => x.classList.remove("dragging"));
+      handEl.classList.remove("drop-target");
+      this.handDrag = null;
+    };
+
+    const begin = () => {
+      if (this.actionInFlight) return;
+      dragging = true;
+      this.suppressNextCardClick = true;
+      el.classList.add("dragging");
+      ghost = el.cloneNode(true);
+      ghost.classList.add("card-drag-ghost");
+      ghost.style.width = `${el.getBoundingClientRect().width}px`;
+      ghost.style.height = `${el.getBoundingClientRect().height}px`;
+      document.body.appendChild(ghost);
+      handEl.classList.add("drop-target");
+      this.handDrag = {id: cardId};
+    };
+
+    el.addEventListener("pointerdown", (ev) => {
+      if (ev.button !== undefined && ev.button !== 0) return;
+      if (ev.target.closest("button")) return;
+      startX = ev.clientX; startY = ev.clientY;
+      timer = setTimeout(begin, 180);
+      try { el.setPointerCapture(ev.pointerId); } catch (_) {}
+    });
+
+    el.addEventListener("pointermove", (ev) => {
+      if (!timer && !dragging) return;
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+      if (!dragging && Math.hypot(dx, dy) > 12) {
+        // Petit déplacement avant le long-press = intention de faire défiler.
+        clearTimeout(timer);
+        timer = null;
+        return;
+      }
+      if (!dragging) return;
+      ev.preventDefault();
+      if (ghost) {
+        ghost.style.left = `${ev.clientX - ghost.offsetWidth / 2}px`;
+        ghost.style.top = `${ev.clientY - ghost.offsetHeight / 2}px`;
+      }
+      const siblings = [...handEl.querySelectorAll(".card.draggable:not(.dragging)")];
+      const target = siblings.find(other => {
+        const r = other.getBoundingClientRect();
+        return ev.clientX < r.left + r.width / 2;
+      });
+      if (target) handEl.insertBefore(el, target);
+      else handEl.appendChild(el);
+    });
+
+    el.addEventListener("pointerup", () => {
+      if (dragging) {
+        const newOrder = [...handEl.querySelectorAll(".card.draggable")].map(x => x.dataset.id);
+        this.handOrder = newOrder;
+        cleanup();
+        // Pas de requête réseau : le classement est uniquement visuel.
+        setTimeout(() => { this.suppressNextCardClick = false; }, 0);
+      } else {
+        clearTimeout(timer);
+        timer = null;
+      }
+    });
+
+    el.addEventListener("pointercancel", cleanup);
+    el.addEventListener("lostpointercapture", () => {
+      if (dragging) {
+        const newOrder = [...handEl.querySelectorAll(".card.draggable")].map(x => x.dataset.id);
+        this.handOrder = newOrder;
+        cleanup();
+      } else {
+        clearTimeout(timer);
+        timer = null;
+      }
+    });
+  },
   renderChat(state) {
     const messages = Array.isArray(state.chat) ? state.chat : [];
     const signature = messages.map(m => `${m.id || ""}:${m.message || ""}`).join("|");
@@ -1033,182 +1176,6 @@ function renderDiscardPanel() {
   });
   panel.innerHTML = rows.join("");
 }
-
-/* ============================================================
-   Glisser-déposer des cartes (souris ET tactile, via Pointer Events)
-   - Dans la main : glisser une carte pour réordonner sa main.
-   - Dans le constructeur de main : glisser une carte de la main vers un
-     groupe, ou d'un groupe vers un autre / vers la main pour la retirer.
-   ============================================================ */
-const Drag = {
-  active: false,
-  justDragged: false, // vrai juste après un drop, pour ignorer le "click" qui suit
-  cardId: null,
-  fromZone: null, // "hand" | "tri" | "escalier" | "carre" | "groupe4"
-  originEl: null,
-  ghostEl: null,
-  startX: 0,
-  startY: 0,
-  THRESHOLD: 10,
-  LONG_PRESS_MS: 160, // mobile : maintien très court pour démarrer le glisser, mouvement franc = défilement
-  dragTimer: null,
-  lastPointer: null,
-
-  makeDraggable(el, cardId, fromZone) {
-    el.addEventListener("pointerdown", (e) => this.onPointerDown(e, el, cardId, fromZone));
-  },
-
-  onPointerDown(e, el, cardId, fromZone) {
-    if (e.button !== undefined && e.button !== 0) return; // clic gauche / doigt uniquement
-    this.pendingEl = el;
-    this.pendingCardId = cardId;
-    this.pendingFromZone = fromZone;
-    this.startX = e.clientX;
-    this.startY = e.clientY;
-    this.pointerId = e.pointerId;
-    this.lastPointer = e;
-
-    // Sur écran tactile, laisser le navigateur faire le scroll horizontal.
-    // Le glisser démarre après un maintien court afin d'éviter le conflit
-    // entre réorganisation des cartes et défilement de la main.
-    if (e.pointerType === "touch") {
-      this.dragTimer = setTimeout(() => {
-        if (!this.pendingEl || this.active) return;
-        const p = this.lastPointer || e;
-        this.startDrag(p);
-      }, this.LONG_PRESS_MS);
-    }
-
-    const move = (ev) => this.onPointerMove(ev);
-    const up = (ev) => this.onPointerUp(ev, move, up);
-    document.addEventListener("pointermove", move);
-    document.addEventListener("pointerup", up, { once: true });
-    document.addEventListener("pointercancel", up, { once: true });
-  },
-
-  onPointerMove(e) {
-    this.lastPointer = e;
-    const dx = e.clientX - this.startX;
-    const dy = e.clientY - this.startY;
-    if (!this.active) {
-      if (Math.abs(dx) < this.THRESHOLD && Math.abs(dy) < this.THRESHOLD) return;
-
-      // Sur mobile, un déplacement horizontal franc avant le maintien
-      // doit rester un scroll natif. Les petits mouvements sont tolérés
-      // pour faciliter le démarrage du glisser.
-      // Si le doigt bouge franchement avant le long-press, on abandonne le drag.
-      if (e.pointerType === "touch") {
-        clearTimeout(this.dragTimer);
-        this.dragTimer = null;
-        this.cleanupPending();
-        return;
-      }
-      this.startDrag(e);
-    }
-    if (this.active) {
-      e.preventDefault();
-      this.ghostEl.style.left = `${e.clientX - this.ghostOffsetX}px`;
-      this.ghostEl.style.top = `${e.clientY - this.ghostOffsetY}px`;
-      this.highlightDropTarget(e.clientX, e.clientY);
-    }
-  },
-
-  startDrag(e) {
-    this.active = true;
-    this.cardId = this.pendingCardId;
-    this.fromZone = this.pendingFromZone;
-    this.originEl = this.pendingEl;
-    this.originEl.classList.add("dragging");
-
-    const rect = this.originEl.getBoundingClientRect();
-    this.ghostOffsetX = e.clientX - rect.left;
-    this.ghostOffsetY = e.clientY - rect.top;
-
-    const ghost = this.originEl.cloneNode(true);
-    ghost.className = "card drag-ghost " + (this.originEl.classList.contains("red") ? "red" : "black");
-    ghost.style.width = `${rect.width}px`;
-    ghost.style.height = `${rect.height}px`;
-    ghost.style.left = `${rect.left}px`;
-    ghost.style.top = `${rect.top}px`;
-    document.body.appendChild(ghost);
-    this.ghostEl = ghost;
-  },
-
-  dropZoneEls() {
-    return Array.from(document.querySelectorAll('[data-dropzone="hand"], .zone-slots[data-zone-slots]'))
-      .filter((el) => el.dataset.zoneSlots !== "discard");
-  },
-
-  highlightDropTarget(x, y) {
-    this.dropZoneEls().forEach((z) => z.classList.remove("drop-target"));
-    const target = this.findDropTarget(x, y);
-    if (target) target.classList.add("drop-target");
-  },
-
-  findDropTarget(x, y) {
-    for (const el of this.dropZoneEls()) {
-      const r = el.getBoundingClientRect();
-      if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return el;
-    }
-    return null;
-  },
-
-  onPointerUp(e, moveFn, upFn) {
-    document.removeEventListener("pointermove", moveFn);
-    clearTimeout(this.dragTimer);
-    this.dragTimer = null;
-    if (!this.active) {
-      this.cleanupPending();
-      return;
-    }
-    e.preventDefault();
-    const target = this.findDropTarget(e.clientX, e.clientY);
-    this.dropZoneEls().forEach((z) => z.classList.remove("drop-target"));
-
-    if (target) {
-      const zoneName = target.dataset.dropzone === "hand" ? "hand" : target.dataset.zoneSlots;
-      this.handleDrop(zoneName, e.clientX);
-    }
-
-    this.originEl.classList.remove("dragging");
-    this.ghostEl.remove();
-    this.ghostEl = null;
-    this.active = false;
-    this.justDragged = true;
-    setTimeout(() => (this.justDragged = false), 50);
-    this.cleanupPending();
-  },
-
-  cleanupPending() {
-    clearTimeout(this.dragTimer);
-    this.dragTimer = null;
-    this.pendingEl = null;
-    this.pendingCardId = null;
-    this.pendingFromZone = null;
-    this.lastPointer = null;
-  },
-
-  handleDrop(toZone, clientX) {
-    const cardId = this.cardId;
-    const fromZone = this.fromZone;
-    if (toZone !== "hand" || fromZone !== "hand") return;
-
-    // Le déplacement ne sert plus à construire une déclaration : il permet
-    // seulement d'organiser visuellement sa main si le joueur le souhaite.
-    const cards = Array.from(document.querySelectorAll("#hand .card"));
-    let beforeId = null;
-    for (const c of cards) {
-      const r = c.getBoundingClientRect();
-      if (c.dataset.id !== cardId && clientX < r.left + r.width / 2) {
-        beforeId = c.dataset.id;
-        break;
-      }
-    }
-    RamiTable.moveInHandOrder(cardId, beforeId);
-    RamiTable.renderHandAndZones();
-  },
-
-};
 
 function suitSymbol(suit) {
   return { Pique: "♠", Coeur: "♥", Carreau: "♦", Trefle: "♣" }[suit] || suit;

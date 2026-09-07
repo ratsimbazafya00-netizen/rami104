@@ -7,7 +7,7 @@
 <title>Rami 104 — Salon {{ room_code }}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v=8) }}">
 </head>
 <body class="table-body" data-room-code="{{ room_code }}">
 
@@ -95,13 +95,13 @@
               <div class="table-divider"></div>
               <button id="pile-defausse" class="pile pile-defausse" title="Prendre la défausse"><span class="pile-title">DÉFAUSSE</span><div id="discard-card" class="card card-empty">—</div><span class="pile-count">dessus de pile</span></button>
             </div>
-            <div class="table-helper">Touchez une pile pour jouer • Glissez vos cartes pour les organiser</div>
+            <div class="table-helper">Touchez une pile pour jouer • La main gagnante est détectée automatiquement</div>
           </div>
         </section>
 
         <div id="action-bar" class="action-bar" hidden><div class="turn-action-copy"><span class="action-dot"></span><strong>Votre tour</strong><small>Piochez une carte : votre main gagnante sera détectée automatiquement.</small></div></div>
 
-        <section class="hand-section"><div class="hand-title-row"><div><span class="section-kicker">VOTRE JEU</span><h2>Ma main <span class="hand-subtitle">• faites glisser pour réorganiser</span></h2></div><div class="hand-tip">14 cartes max</div></div><div id="hand-wrap" class="hand-wrap"><div id="hand" class="hand" data-dropzone="hand"></div></div></section>
+        <section class="hand-section"><div class="hand-title-row"><div><span class="section-kicker">VOTRE JEU</span><h2>Ma main <span class="hand-subtitle">• détection automatique</span></h2></div><div class="hand-tip">Glissez pour ranger • détection automatique</div></div><div id="hand-wrap" class="hand-wrap"><div id="hand" class="hand" data-dropzone="hand"></div></div></section>
 
       </main>
 
@@ -122,7 +122,7 @@
       <p id="finished-reason" class="finished-reason"></p>
 
       <div class="result-banner">
-        <span>🏆</span><div><strong>Résultat de la partie</strong><small>La main gagnante est affichée ci-dessous.</small></div>
+        <span>🏆</span><div><strong>Combinaison gagnante détectée automatiquement</strong><small>Le serveur a reconnu les 13 cartes gagnantes sans action manuelle.</small></div>
       </div>
 
       <div id="finished-hand" class="declare-builder finished-hand" hidden>
@@ -151,7 +151,7 @@
 
   <p id="table-error" class="error-toast" hidden></p>
 
-<script src="{{ url_for('static', filename='js/game.js') }}"></script>
+<script src="{{ url_for('static', filename='js/game.js', v=8) }}"></script>
 <script>RamiTable.init("{{ room_code }}");</script>
 </body>
 </html>
