@@ -185,3 +185,87 @@ def validate_full_hand(groupes, joker_info):
         return False, f"4e groupe invalide : {msg_g4}", detail
 
     return True, "Main gagnante valide !", detail
+
+
+
+def find_winning_partition(cards, joker_info):
+    """Cherche automatiquement une main gagnante de 13 cartes parmi 14.
+
+    Retourne un dict d'IDs: tri, escalier, carre, groupe4, discard, ou None.
+    La recherche respecte exactement les règles de validate_full_hand(),
+    notamment la condition des jokers entre le carré et le tri/escalier.
+    """
+    from itertools import combinations
+
+    cards = list(cards)
+    if len(cards) != 14:
+        return None
+
+    def ids(group):
+        return tuple(c.id for c in group)
+
+    def disjoint(*groups):
+        seen = set()
+        for group in groups:
+            for c in group:
+                if c.id in seen:
+                    return False
+                seen.add(c.id)
+        return True
+
+    candidates3 = list(combinations(cards, 3))
+    candidates4 = list(combinations(cards, 4))
+
+    # Le carré est testé en premier car il détermine l'autorisation du joker.
+    for carre_t in candidates4:
+        ok_carre, _, meta = check_carre(list(carre_t), joker_info)
+        if not ok_carre:
+            continue
+        allow_tri = meta["type"] == "carre" and not meta["utilise_joker"]
+        allow_esc = meta["type"] == "escalier4" and not meta["utilise_joker"]
+
+        tri_candidates = []
+        esc_candidates = []
+        g4_candidates = []
+        remaining_after_carre = [c for c in cards if c.id not in {x.id for x in carre_t}]
+
+        for tri_t in combinations(remaining_after_carre, 3):
+            ok, _ = _check_set(list(tri_t), joker_info, 3, allow_tri)
+            if ok:
+                tri_candidates.append(tri_t)
+
+        for esc_t in combinations(remaining_after_carre, 3):
+            ok, _ = _check_run(list(esc_t), joker_info, 3, allow_esc)
+            if ok:
+                esc_candidates.append(esc_t)
+
+        for g4_t in combinations(remaining_after_carre, 3):
+            ok, _ = check_groupe4(list(g4_t), joker_info)
+            if ok:
+                g4_candidates.append(g4_t)
+
+        for tri_t in tri_candidates:
+            if not disjoint(carre_t, tri_t):
+                continue
+            used1 = {c.id for c in carre_t + tri_t}
+            for esc_t in esc_candidates:
+                if any(c.id in used1 for c in esc_t):
+                    continue
+                used2 = used1 | {c.id for c in esc_t}
+                for g4_t in g4_candidates:
+                    if any(c.id in used2 for c in g4_t):
+                        continue
+                    used = used2 | {c.id for c in g4_t}
+                    if len(used) != 13:
+                        continue
+                    leftover = [c for c in cards if c.id not in used]
+                    if len(leftover) != 1:
+                        continue
+                    return {
+                        "tri": [c.id for c in tri_t],
+                        "escalier": [c.id for c in esc_t],
+                        "carre": [c.id for c in carre_t],
+                        "groupe4": [c.id for c in g4_t],
+                        "discard": leftover[0].id,
+                    }
+    return None

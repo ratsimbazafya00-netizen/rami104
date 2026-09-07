@@ -152,3 +152,6 @@ nécessite aucune dépendance supplémentaire.
 - La recherche d'amis accepte le pseudo ou l'ID `R104-...`, ne renvoie jamais le téléphone et déduplique les comptes malgré les différents index de stockage.
 - Le bot choisit désormais sa carte de défausse aléatoirement.
 - Le numéro de manche est incrémenté au démarrage de chaque manche et affiché sous la forme `MANCHE N`.
+
+## Détection automatique de main gagnante
+La construction manuelle des 4 groupes n'est plus nécessaire. Après chaque pioche, le serveur examine automatiquement les 14 cartes du joueur. S'il trouve une répartition valide de 13 cartes (tri + escalier + carré + groupe4) avec une seule carte restante à défausser, la main est validée automatiquement et le joueur gagne immédiatement. Les règles conditionnelles des jokers restent appliquées côté serveur.

@@ -512,13 +512,6 @@ const RamiTable = {
     document.getElementById("pile-pioche").addEventListener("click", () => this.draw("pioche"));
     document.getElementById("pile-defausse").addEventListener("click", () => this.draw("defausse"));
 
-    document.getElementById("btn-declare").addEventListener("click", () => this.openDeclareBuilder());
-    document.getElementById("btn-cancel-declare").addEventListener("click", () => this.closeDeclareBuilder());
-    document.getElementById("btn-validate-declare").addEventListener("click", () => this.validateDeclare());
-
-    document.querySelectorAll(".zone[data-zone]").forEach((zoneEl) => {
-      zoneEl.addEventListener("click", () => this.assignSelectedTo(zoneEl.dataset.zone));
-    });
   },
 
   async toggleFriendInvites() {
@@ -978,7 +971,6 @@ const RamiTable = {
     const actionBar = document.getElementById("action-bar");
     const canAct = !this.actionInFlight && state.is_my_turn && state.turn_stage === "discard" && !this.declareMode;
     actionBar.hidden = !(state.is_my_turn && state.turn_stage === "discard");
-    document.getElementById("btn-declare").hidden = this.declareMode;
 
     this.renderHandAndZones();
   },
@@ -1049,52 +1041,7 @@ const RamiTable = {
       handEl.appendChild(el);
     });
 
-    if (this.declareMode) {
-      document.getElementById("declare-builder").hidden = false;
-      for (const zone of ["tri", "escalier", "carre", "groupe4"]) {
-        const slotEl = document.querySelector(`[data-zone-slots="${zone}"]`);
-        const capacity = this.zoneCapacity(zone);
-        const ids = this.assignments[zone];
 
-        const countEl = document.querySelector(`[data-count="${zone}"]`);
-        if (countEl) countEl.textContent = `${ids.length}/${capacity}`;
-
-        slotEl.innerHTML = "";
-        ids.forEach((id) => {
-          const c = hand.find((h) => h.id === id);
-          if (!c) return;
-          const chip = document.createElement("div");
-          chip.className = "card draggable " + (c.color === "Rouge" ? "red" : "black");
-          chip.textContent = c.label;
-          chip.addEventListener("click", (ev) => {
-            ev.stopPropagation();
-            if (Drag.justDragged) return;
-            this.unassign(c.id);
-          });
-          Drag.makeDraggable(chip, c.id, zone);
-          slotEl.appendChild(chip);
-        });
-        // Emplacements vides visibles : on voit d'un coup d'oeil combien de
-        // cartes manquent encore pour compléter le groupe.
-        for (let i = ids.length; i < capacity; i++) {
-          const empty = document.createElement("div");
-          empty.className = "zone-slot-empty";
-          slotEl.appendChild(empty);
-        }
-      }
-      const discardSlot = document.querySelector('[data-zone-slots="discard"]');
-      discardSlot.innerHTML = "";
-      const leftover = hand.filter((c) => !assigned.has(c.id));
-      if (leftover.length === 1) {
-        const c = leftover[0];
-        const chip = document.createElement("div");
-        chip.className = "card " + (c.color === "Rouge" ? "red" : "black");
-        chip.textContent = c.label;
-        discardSlot.appendChild(chip);
-      } else {
-        discardSlot.innerHTML = `<span class="zone-placeholder">${leftover.length} carte(s) restante(s) à placer</span>`;
-      }
-    }
   },
 
   renderChat(state) {

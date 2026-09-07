@@ -10,7 +10,7 @@ import time
 import uuid
 
 from .cards import Card, build_double_deck, shuffle_very_random, determine_joker, is_joker
-from .melds import validate_full_hand
+from .melds import validate_full_hand, find_winning_partition
 from .storage import build_storage
 
 MAX_PLAYERS = 5
@@ -217,6 +217,39 @@ class Room:
 
             self.turn_stage = "discard"
             self._check_joker_auto_win()
+            # Validation automatique : dès que les 14 cartes permettent de
+            # former les 13 cartes gagnantes, le serveur choisit lui-même les
+            # combinaisons et la carte à défausser. Le joueur n'a rien à ranger.
+            if self.phase == "playing" and len(player.hand) == 14:
+                self._check_automatic_hand_win(player)
+
+    def _check_automatic_hand_win(self, player):
+        partition = find_winning_partition(player.hand, self.joker_info)
+        if not partition:
+            return False
+
+        hand_by_id = {c.id: c for c in player.hand}
+        groups_cards = {
+            key: [hand_by_id[cid] for cid in partition[key]]
+            for key in ("tri", "escalier", "carre", "groupe4")
+        }
+        discard_card = hand_by_id[partition["discard"]]
+
+        self.winning_hand = {
+            "tri": [c.to_dict() for c in groups_cards["tri"]],
+            "escalier": [c.to_dict() for c in groups_cards["escalier"]],
+            "carre": [c.to_dict() for c in groups_cards["carre"]],
+            "groupe4": [c.to_dict() for c in groups_cards["groupe4"]],
+            "discard": discard_card.to_dict(),
+        }
+        player.hand = []
+        self.discard_pile.append({"card": discard_card, "player_id": player.id, "player_name": player.name})
+        self.phase = "finished"
+        self.winner_id = player.id
+        self.last_winner_id = player.id
+        self.win_reason = "Main gagnante détectée automatiquement (13 cartes valides + 1 défausse)."
+        self._log(f"🏆 {player.name} GAGNE automatiquement : combinaison gagnante détectée.")
+        return True
 
     def _is_joker_card(self, card):
         return bool(self.joker_info and is_joker(card, self.joker_info))

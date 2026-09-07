@@ -99,21 +99,10 @@
           </div>
         </section>
 
-        <div id="action-bar" class="action-bar" hidden><div class="turn-action-copy"><span class="action-dot"></span><strong>Votre tour</strong><small>Vous pouvez jouer maintenant</small></div><button id="btn-cancel-declare" class="btn btn-ghost btn-small" hidden>Annuler</button><button id="btn-declare" class="btn btn-gold">✦ Proposer ma main</button></div>
+        <div id="action-bar" class="action-bar" hidden><div class="turn-action-copy"><span class="action-dot"></span><strong>Votre tour</strong><small>Piochez une carte : votre main gagnante sera détectée automatiquement.</small></div></div>
 
         <section class="hand-section"><div class="hand-title-row"><div><span class="section-kicker">VOTRE JEU</span><h2>Ma main <span class="hand-subtitle">• faites glisser pour réorganiser</span></h2></div><div class="hand-tip">14 cartes max</div></div><div id="hand-wrap" class="hand-wrap"><div id="hand" class="hand" data-dropzone="hand"></div></div></section>
 
-        <section id="declare-builder" class="declare-builder" hidden>
-          <div class="builder-head"><div><span class="section-kicker">MODE DÉCLARATION</span><h2>Construisez votre main gagnante</h2></div><span class="builder-rule">13 cartes + 1 défausse</span></div>
-          <div class="builder-grid">
-            <div class="zone zone-tri" data-zone="tri"><div class="zone-head"><h3>TRI</h3><span class="zone-count" data-count="tri">0/3</span></div><p class="zone-hint">Même rang · 3 enseignes</p><div class="zone-slots" data-zone-slots="tri"></div></div>
-            <div class="zone zone-escalier" data-zone="escalier"><div class="zone-head"><h3>ESCALIER</h3><span class="zone-count" data-count="escalier">0/3</span></div><p class="zone-hint">3 cartes consécutives · même enseigne</p><div class="zone-slots" data-zone-slots="escalier"></div></div>
-            <div class="zone zone-carre" data-zone="carre"><div class="zone-head"><h3>CARRÉ</h3><span class="zone-count" data-count="carre">0/4</span></div><p class="zone-hint">4 cartes · joker selon les règles</p><div class="zone-slots" data-zone-slots="carre"></div></div>
-            <div class="zone zone-groupe4" data-zone="groupe4"><div class="zone-head"><h3>4E GROUPE</h3><span class="zone-count" data-count="groupe4">0/3</span></div><p class="zone-hint">Tri ou escalier · 1 joker possible</p><div class="zone-slots" data-zone-slots="groupe4"></div></div>
-            <div class="zone zone-discard"><div class="zone-head"><h3>DÉFAUSSE</h3><span class="zone-count">1 carte</span></div><p class="zone-hint">La carte restante sera défaussée</p><div class="zone-slots" data-zone-slots="discard"></div></div>
-          </div>
-          <div class="builder-footer"><p id="declare-error" class="error-text" hidden></p><button id="btn-validate-declare" class="btn btn-gold btn-xl">✓ Valider ma main gagnante</button></div>
-        </section>
       </main>
 
       <aside class="game-rightbar">
