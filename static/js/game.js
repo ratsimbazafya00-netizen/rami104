@@ -945,6 +945,10 @@ const RamiTable = {
     if (!canAct || !hand.some(c => c.id === this.pendingDiscardId)) this.pendingDiscardId = null;
 
     const handEl = document.getElementById("hand");
+    // Conserver exactement la position de défilement horizontale.
+    // Un rerender (clic, changement de tour, etc.) ne doit jamais ramener
+    // la main au début.
+    const savedScrollLeft = handEl.scrollLeft;
     handEl.innerHTML = "";
     handEl.classList.remove("drop-target");
 
@@ -988,6 +992,7 @@ const RamiTable = {
       this.bindCardReorder(el, handEl);
       handEl.appendChild(el);
     });
+    requestAnimationFrame(() => { handEl.scrollLeft = savedScrollLeft; });
   },
 
   bindCardReorder(el, handEl) {
@@ -999,30 +1004,28 @@ const RamiTable = {
     let pointerId = null;
     let ghost = null;
     const cardId = el.dataset.id;
-    const pointerType = () => (window.event && window.event.pointerType) || "";
 
     const clearTimer = () => {
       if (timer) clearTimeout(timer);
       timer = null;
     };
 
-    const getOrder = () => [...handEl.querySelectorAll(".card.draggable")].map(x => x.dataset.id);
+    const getOrder = () => [...handEl.querySelectorAll(":scope > .card.draggable")].map(x => x.dataset.id);
 
     const cleanup = (commit = false) => {
       clearTimer();
       if (commit) this.handOrder = getOrder();
       if (ghost) ghost.remove();
       ghost = null;
-      document.querySelectorAll(".hand .card.dragging").forEach(x => x.classList.remove("dragging"));
+      el.classList.remove("dragging");
       handEl.classList.remove("drop-target");
       this.handDrag = null;
       dragging = false;
       moved = false;
       pointerId = null;
       setTimeout(() => { this.suppressNextCardClick = false; }, 0);
-      // Reconcile with the latest server state after a drag. The arrangement
-      // itself remains local and is never sent to the server.
-      if (this.lastState) this.renderHandAndZones();
+      // IMPORTANT: ne rerend pas ici. Un rerender détruirait la position
+      // visuelle juste après un glissement et pouvait casser le défilement.
     };
 
     const begin = (ev) => {
@@ -1052,17 +1055,14 @@ const RamiTable = {
       startY = ev.clientY;
       moved = false;
 
-      // Desktop: normal click-drag, no long press required.
-      if (ev.pointerType === "mouse") {
-        return;
-      }
+      if (ev.pointerType === "mouse") return;
 
-      // Touch/pen: keep horizontal scrolling usable; require a short
-      // long-press before entering reorder mode.
+      // Sur tactile: le défilement horizontal est PRIORITAIRE.
+      // Une carte ne devient déplaçable qu'après un appui long immobile.
       timer = setTimeout(() => {
         timer = null;
-        if (!moved) begin(ev);
-      }, 180);
+        if (!moved && pointerId === ev.pointerId) begin(ev);
+      }, 350);
     }, {passive: true});
 
     el.addEventListener("pointermove", (ev) => {
@@ -1071,12 +1071,13 @@ const RamiTable = {
       const dy = ev.clientY - startY;
 
       if (!dragging) {
-        if (Math.hypot(dx, dy) > 8) {
+        // Dès que le doigt bouge, on laisse le navigateur gérer le scroll.
+        // Le long-press est annulé pour éviter de capturer le défilement.
+        if (Math.hypot(dx, dy) > 7) {
           moved = true;
-          if (ev.pointerType !== "mouse") clearTimer();
-          // For mouse, crossing the small threshold starts the drag.
-          if (ev.pointerType === "mouse") begin(ev);
-          else return;
+          clearTimer();
+          if (ev.pointerType !== "mouse") return;
+          if (Math.abs(dx) + Math.abs(dy) >= 7) begin(ev);
         }
         return;
       }
@@ -1087,7 +1088,7 @@ const RamiTable = {
         ghost.style.top = `${ev.clientY - ghost.offsetHeight / 2}px`;
       }
 
-      const siblings = [...handEl.querySelectorAll(".card.draggable:not(.dragging)")];
+      const siblings = [...handEl.querySelectorAll(":scope > .card.draggable:not(.dragging)")];
       const target = siblings.find(other => {
         const r = other.getBoundingClientRect();
         return ev.clientX < r.left + r.width / 2;
