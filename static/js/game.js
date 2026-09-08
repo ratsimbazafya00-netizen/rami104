@@ -592,7 +592,7 @@ const RamiTable = {
       // Le serveur incrémente state_version uniquement lorsqu'une vraie
       // modification de partie intervient. Cela évite une grosse charge
       // CPU/DOM sur mobile et réduit fortement la sensation de latence.
-      if (stateChanged) this.render(this.lastState);
+      if (stateChanged && !this.handDrag) this.render(this.lastState);
 
       if (withHistory) {
         // Le premier état peut déjà contenir l'historique complet : inutile
@@ -993,59 +993,100 @@ const RamiTable = {
   bindCardReorder(el, handEl) {
     let timer = null;
     let dragging = false;
+    let moved = false;
     let startX = 0;
     let startY = 0;
+    let pointerId = null;
     let ghost = null;
     const cardId = el.dataset.id;
+    const pointerType = () => (window.event && window.event.pointerType) || "";
 
-    const cleanup = () => {
-      clearTimeout(timer);
+    const clearTimer = () => {
+      if (timer) clearTimeout(timer);
       timer = null;
+    };
+
+    const getOrder = () => [...handEl.querySelectorAll(".card.draggable")].map(x => x.dataset.id);
+
+    const cleanup = (commit = false) => {
+      clearTimer();
+      if (commit) this.handOrder = getOrder();
       if (ghost) ghost.remove();
       ghost = null;
       document.querySelectorAll(".hand .card.dragging").forEach(x => x.classList.remove("dragging"));
       handEl.classList.remove("drop-target");
       this.handDrag = null;
+      dragging = false;
+      moved = false;
+      pointerId = null;
+      setTimeout(() => { this.suppressNextCardClick = false; }, 0);
+      // Reconcile with the latest server state after a drag. The arrangement
+      // itself remains local and is never sent to the server.
+      if (this.lastState) this.renderHandAndZones();
     };
 
-    const begin = () => {
-      if (this.actionInFlight) return;
+    const begin = (ev) => {
+      if (dragging || this.actionInFlight) return;
       dragging = true;
       this.suppressNextCardClick = true;
       el.classList.add("dragging");
       ghost = el.cloneNode(true);
       ghost.classList.add("card-drag-ghost");
-      ghost.style.width = `${el.getBoundingClientRect().width}px`;
-      ghost.style.height = `${el.getBoundingClientRect().height}px`;
+      const rect = el.getBoundingClientRect();
+      ghost.style.width = `${rect.width}px`;
+      ghost.style.height = `${rect.height}px`;
+      ghost.style.left = `${ev.clientX - rect.width / 2}px`;
+      ghost.style.top = `${ev.clientY - rect.height / 2}px`;
       document.body.appendChild(ghost);
       handEl.classList.add("drop-target");
       this.handDrag = {id: cardId};
+      try { el.setPointerCapture(ev.pointerId); } catch (_) {}
     };
 
     el.addEventListener("pointerdown", (ev) => {
+      if (this.actionInFlight) return;
       if (ev.button !== undefined && ev.button !== 0) return;
       if (ev.target.closest("button")) return;
-      startX = ev.clientX; startY = ev.clientY;
-      timer = setTimeout(begin, 180);
-      try { el.setPointerCapture(ev.pointerId); } catch (_) {}
-    });
+      pointerId = ev.pointerId;
+      startX = ev.clientX;
+      startY = ev.clientY;
+      moved = false;
 
-    el.addEventListener("pointermove", (ev) => {
-      if (!timer && !dragging) return;
-      const dx = ev.clientX - startX;
-      const dy = ev.clientY - startY;
-      if (!dragging && Math.hypot(dx, dy) > 12) {
-        // Petit déplacement avant le long-press = intention de faire défiler.
-        clearTimeout(timer);
-        timer = null;
+      // Desktop: normal click-drag, no long press required.
+      if (ev.pointerType === "mouse") {
         return;
       }
-      if (!dragging) return;
+
+      // Touch/pen: keep horizontal scrolling usable; require a short
+      // long-press before entering reorder mode.
+      timer = setTimeout(() => {
+        timer = null;
+        if (!moved) begin(ev);
+      }, 180);
+    }, {passive: true});
+
+    el.addEventListener("pointermove", (ev) => {
+      if (pointerId !== null && ev.pointerId !== pointerId) return;
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+
+      if (!dragging) {
+        if (Math.hypot(dx, dy) > 8) {
+          moved = true;
+          if (ev.pointerType !== "mouse") clearTimer();
+          // For mouse, crossing the small threshold starts the drag.
+          if (ev.pointerType === "mouse") begin(ev);
+          else return;
+        }
+        return;
+      }
+
       ev.preventDefault();
       if (ghost) {
         ghost.style.left = `${ev.clientX - ghost.offsetWidth / 2}px`;
         ghost.style.top = `${ev.clientY - ghost.offsetHeight / 2}px`;
       }
+
       const siblings = [...handEl.querySelectorAll(".card.draggable:not(.dragging)")];
       const target = siblings.find(other => {
         const r = other.getBoundingClientRect();
@@ -1053,31 +1094,22 @@ const RamiTable = {
       });
       if (target) handEl.insertBefore(el, target);
       else handEl.appendChild(el);
-    });
+    }, {passive: false});
 
-    el.addEventListener("pointerup", () => {
-      if (dragging) {
-        const newOrder = [...handEl.querySelectorAll(".card.draggable")].map(x => x.dataset.id);
-        this.handOrder = newOrder;
-        cleanup();
-        // Pas de requête réseau : le classement est uniquement visuel.
-        setTimeout(() => { this.suppressNextCardClick = false; }, 0);
-      } else {
-        clearTimeout(timer);
-        timer = null;
+    el.addEventListener("pointerup", (ev) => {
+      if (pointerId !== null && ev.pointerId !== pointerId) return;
+      clearTimer();
+      if (dragging) cleanup(true);
+      else {
+        pointerId = null;
+        moved = false;
       }
     });
 
-    el.addEventListener("pointercancel", cleanup);
+    el.addEventListener("pointercancel", () => cleanup(dragging));
     el.addEventListener("lostpointercapture", () => {
-      if (dragging) {
-        const newOrder = [...handEl.querySelectorAll(".card.draggable")].map(x => x.dataset.id);
-        this.handOrder = newOrder;
-        cleanup();
-      } else {
-        clearTimeout(timer);
-        timer = null;
-      }
+      if (dragging) cleanup(true);
+      else clearTimer();
     });
   },
   renderChat(state) {
