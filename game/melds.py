@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Validation des combinaisons du Rami 104.
+Règles et détection automatique des combinaisons du Rami 104.
 
 Structure obligatoire des 13 cartes d'un joueur pour gagner :
 

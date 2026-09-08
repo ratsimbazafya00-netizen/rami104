@@ -272,18 +272,6 @@ label{display:block;color:#9db6aa;font-size:.7rem;font-weight:700;margin:0 0 7px
 .discard-confirm:active{transform:scale(.92)}
 .table-helper{font-size:.58rem;color:#699181;margin-top:14px}
 
-/* ---------------- ACTION BAR ---------------- */
-.action-bar{
-  width:min(1100px,calc(100% - 28px));margin:9px auto 0;display:flex;align-items:center;gap:8px;
-  padding:8px 10px;background:rgba(10,54,40,.82);border:1px solid rgba(244,196,0,.20);border-radius:14px;
-}
-.turn-action-copy{display:flex;flex-direction:column;min-width:0;margin-right:auto}
-.turn-action-copy strong{font-size:.72rem;color:var(--gold-2)}
-.turn-action-copy small{font-size:.58rem;color:#78978b;margin-top:1px}
-.action-dot{display:none}
-.action-bar .btn{min-height:38px;padding:8px 13px;font-size:.66rem}
-.action-bar .btn-gold{min-width:145px}
-
 /* ---------------- HAND ---------------- */
 .hand-section{width:min(1100px,100%);margin:15px auto 0}
 .hand-title-row{display:flex;align-items:end;justify-content:space-between;padding:0 14px 8px}
@@ -306,36 +294,6 @@ label{display:block;color:#9db6aa;font-size:.7rem;font-weight:700;margin:0 0 7px
 .card.dragging{opacity:.2}
 .card.drag-ghost{position:fixed;z-index:999;pointer-events:none;transform:scale(1.08) rotate(-2deg);box-shadow:0 18px 35px rgba(0,0,0,.5)}
 .zone-slots.drop-target,.hand.drop-target{background:rgba(244,196,0,.09);outline:2px dashed var(--gold);outline-offset:2px;border-radius:11px}
-
-/* ---------------- DECLARE BUILDER ---------------- */
-.declare-builder{
-  width:min(1100px,calc(100% - 28px));margin:12px auto 0;padding:14px;
-  background:rgba(4,28,20,.90);border:1px solid rgba(244,196,0,.24);border-radius:18px;
-}
-.builder-head{display:flex;align-items:end;justify-content:space-between;gap:12px;padding:2px 2px 12px}
-.builder-head h2{font-size:1.18rem;margin-top:2px}
-.builder-rule{font-size:.58rem;color:#769286;text-align:right}
-.builder-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
-.zone{
-  min-width:0;background:rgba(255,255,255,.025);border:1px solid var(--line);border-left:3px solid var(--zone-accent);
-  border-radius:12px;padding:10px;
-}
-.zone-tri{--zone-accent:#64bd92}.zone-escalier{--zone-accent:#67a9e3}
-.zone-carre{--zone-accent:var(--gold);background:rgba(244,196,0,.035)}
-.zone-groupe4{--zone-accent:#b58bd1}.zone-discard{--zone-accent:var(--danger)}
-.zone-head{display:flex;justify-content:space-between;align-items:center;gap:6px}
-.zone h3{font-family:var(--font-body);font-size:.68rem;font-weight:900;letter-spacing:.08em}
-.zone-count{font-size:.6rem;font-weight:900;color:var(--zone-accent);background:rgba(255,255,255,.05);padding:3px 7px;border-radius:999px}
-.zone-hint{color:#678378;font-size:.58rem;line-height:1.35;margin:4px 0 8px}
-.zone-slots{display:flex;gap:5px;min-height:79px;flex-wrap:wrap;align-items:flex-start}
-.zone-slots .card,.zone-slot-empty{width:47px;height:68px;font-size:.85rem}
-.zone-slot-empty{border-radius:8px;border:1px dashed rgba(255,255,255,.14);flex-shrink:0}
-.zone-placeholder{color:#4e6a5f;font-size:.58rem;align-self:center}
-.zone-discard .zone-slots{min-height:68px}
-.builder-footer{margin-top:10px}
-.builder-footer .error-text{margin-bottom:8px}
-.builder-footer .btn{max-width:520px;margin:auto}
-.finished-hand{margin-top:15px;padding:0;background:transparent;border:0;width:100%}
 
 /* ---------------- TOOLS / LOG ---------------- */
 .below-table-tools{text-align:center;padding:10px 0}
@@ -402,20 +360,6 @@ label{display:block;color:#9db6aa;font-size:.7rem;font-weight:700;margin:0 0 7px
   .piles{gap:28px}
   .hand-section{margin-top:18px}
 
-  /* Déclaration compacte : les 5 sélections tiennent sur une seule ligne. */
-  .declare-builder{padding:10px 12px;margin-top:8px;border-radius:14px}
-  .builder-head{padding:0 2px 8px}
-  .builder-head h2{font-size:1.05rem}
-  .builder-rule{font-size:.55rem}
-  .builder-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
-  .zone{padding:7px 7px 6px;border-radius:9px}
-  .zone h3{font-size:.62rem}
-  .zone-count{font-size:.54rem;padding:2px 5px}
-  .zone-hint{font-size:.52rem;line-height:1.2;margin:3px 0 5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .zone-slots{min-height:66px;gap:3px;flex-wrap:nowrap;overflow:hidden}
-  .zone-slots .card,.zone-slot-empty{width:42px;height:61px;font-size:.72rem}
-  .zone-discard .zone-slots{min-height:61px}
-  .builder-footer{margin-top:7px}
 }
 
 /* ---------------- SMALL MOBILE ---------------- */
@@ -433,20 +377,6 @@ label{display:block;color:#9db6aa;font-size:.7rem;font-weight:700;margin:0 0 7px
   .piles{gap:13px}
   .table-divider{height:78px}
   .pile .card{width:54px;height:77px;font-size:1rem}
-  .action-bar{width:calc(100% - 18px)}
-  .turn-action-copy{display:none}
-  .action-bar .btn-gold{flex:1}
-  .builder-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
-  .builder-head{align-items:flex-start;flex-direction:column}
-  .builder-rule{text-align:left}
-  .declare-builder{padding:9px 8px;margin-top:8px}
-  .zone{padding:6px}
-  .zone h3{font-size:.6rem}
-  .zone-count{font-size:.52rem;padding:2px 5px}
-  .zone-hint{font-size:.5rem;margin:2px 0 4px}
-  .zone-slots{min-height:63px;gap:3px}
-  .zone-slots .card,.zone-slot-empty{width:40px;height:58px;font-size:.68rem}
-  .zone-discard .zone-slots{min-height:58px}
 }
 
 /* Safe-area support for phones */
@@ -709,7 +639,6 @@ label{display:block;color:#9db6aa;font-size:.7rem;font-weight:700;margin:0 0 7px
 .table-status{display:flex;align-items:center;justify-content:space-between;padding:4px 4px 7px}.table-status .joker-badge{margin:0}.turn-banner{font-size:.58rem}
 .casino-table{width:100%;min-height:245px;margin:0;border-radius:15px}.center-table{padding-top:26px}.piles{gap:22px}.table-helper{margin-top:10px}
 .hand-section{width:100%;margin-top:9px}.hand-title-row{padding-left:3px;padding-right:3px}.hand-wrap{border-radius:10px}
-.declare-builder{width:100%;margin:8px 0 0;padding:8px 9px;border-radius:13px}.builder-head{padding:0 1px 6px}.builder-head h2{font-size:.92rem}.builder-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:5px}.zone{padding:6px}.zone-hint{font-size:.48rem;margin:3px 0 4px}.zone-slots{min-height:59px;gap:2px}.zone-slots .card,.zone-slot-empty{width:39px;height:57px;font-size:.67rem}.zone-discard .zone-slots{min-height:57px}.builder-footer{margin-top:6px}.builder-footer .btn{min-height:36px}
 .game-rightbar{display:flex;flex-direction:column;gap:8px;position:sticky;top:58px;max-height:calc(100vh - 68px);overflow:auto;scrollbar-width:thin}.side-panel{background:rgba(4,30,22,.78);border:1px solid rgba(255,255,255,.055);border-radius:13px;padding:9px}.table-chat{margin:0!important;width:100%!important}.game-rightbar .chat-messages{max-height:220px;min-height:120px}.side-panel-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}.side-panel-title strong{font-size:.62rem;color:#c8dbd3}.side-log{width:100%;max-height:180px;margin:0;padding:7px 8px;background:rgba(0,0,0,.14);border:0;border-radius:8px;font-size:.52rem}.journal-panel .log-panel{display:flex}
 .below-table-tools{display:none}
 
@@ -718,7 +647,6 @@ label{display:block;color:#9db6aa;font-size:.7rem;font-weight:700;margin:0 0 7px
   .game-topbar{grid-template-columns:auto 1fr auto;gap:7px}.game-room{display:none}.round-badge{justify-self:start}.game-layout{grid-template-columns:1fr;width:calc(100% - 14px)}
   .players-sidebar,.game-rightbar{position:static;max-height:none}.players-sidebar{order:0}.game-center{order:1}.game-rightbar{order:2;display:grid;grid-template-columns:1fr 1fr}.journal-panel{min-width:0}.opponents-strip{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}.opp-chip{min-height:45px}.game-rightbar .chat-messages{max-height:180px}
 }
-@media(max-width:560px){.game-topbar{padding:8px 9px}.round-badge{font-size:.5rem;padding:5px 8px}.game-layout{width:calc(100% - 10px);margin-top:5px}.players-sidebar{padding:7px}.opponents-strip{grid-template-columns:repeat(2,minmax(0,1fr))}.game-rightbar{grid-template-columns:1fr}.casino-table{min-height:205px}.center-table{padding-top:20px}.piles{gap:12px}.table-divider{height:75px}.declare-builder{overflow:hidden}.builder-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.zone-slots{overflow-x:auto}.game-rightbar .chat-messages{max-height:160px}}
 
 /* Accueil — sélecteur de visibilité et salons publics */
 .create-row{display:grid;grid-template-columns:105px minmax(0,1fr);gap:7px;align-items:end}.visibility-control label{display:block;margin-bottom:5px;color:#78958a;font-size:.5rem}.visibility-control select{width:100%;height:42px;border:1px solid var(--line);border-radius:9px;background:#061d15;color:#d8e6df;padding:0 7px;font:inherit;font-size:.56rem;outline:none}.public-rooms-head{display:flex;align-items:center;justify-content:space-between;margin-top:13px;padding-top:9px;border-top:1px solid rgba(255,255,255,.055)}.public-rooms-head small{color:#5e7d71;font-size:.48rem}.public-rooms-list{display:flex;flex-direction:column;gap:5px;margin-top:6px;max-height:118px;overflow:auto}.public-room-row{display:flex;align-items:center;justify-content:space-between;gap:7px;padding:7px 8px;border:1px solid rgba(255,255,255,.05);background:rgba(0,0,0,.13);border-radius:8px}.public-room-main{min-width:0;display:flex;flex-direction:column}.public-room-main strong{font-size:.57rem;color:#d2e2db}.public-room-main small{font-size:.45rem;color:#648175;margin-top:2px}.public-room-join{height:27px;min-height:27px!important;padding:4px 8px!important;font-size:.48rem!important;border-radius:7px!important}
@@ -774,9 +702,7 @@ label{display:block;color:#9db6aa;font-size:.7rem;font-weight:700;margin:0 0 7px
 .pile.action-busy::after{content:"";position:absolute;inset:0;cursor:wait}
 .hand .card.discard-pending .discard-confirm{touch-action:manipulation}
 
-/* V7: aucune interface de validation manuelle de main. */
-#declare-builder, #declare-form, #btn-declare, #btn-validate-hand, #validate-hand, [data-declaration-ui] { display:none !important; }
-\n/* V8 : rangement libre de la main, sans validation manuelle. */
+
 .hand .card.draggable{touch-action:pan-x;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;cursor:grab}
 .hand .card.draggable:active{cursor:grabbing}
 .hand.drop-target{outline:1px dashed rgba(244,196,0,.28);outline-offset:3px}

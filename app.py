@@ -10,6 +10,17 @@ from game.accounts import account_manager
 app = Flask(__name__)
 
 
+@app.after_request
+def no_cache_dynamic_responses(response):
+    # Le plateau de jeu est temps réel. Ne laissez pas le navigateur/CDN
+    # réutiliser un ancien HTML ou un ancien état API après un déploiement.
+    if request.path == "/" or request.path.startswith("/salon/") or request.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
+
 def error_response(exc, code=400):
     return jsonify({"ok": False, "error": str(exc)}), code
 

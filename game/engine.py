@@ -223,9 +223,10 @@ class Room:
 
             self.turn_stage = "discard"
             self._check_joker_auto_win()
-            # Validation automatique : dès que les 14 cartes permettent de
+            # Détection automatique : dès que les 14 cartes permettent de
             # former les 13 cartes gagnantes, le serveur choisit lui-même les
-            # combinaisons et la carte à défausser. Le joueur n'a rien à ranger.
+            # combinaisons et la carte à défausser. L'ordre visuel des cartes
+            # côté joueur n'a aucune influence sur cette décision.
             if self.phase == "playing" and len(player.hand) == 14:
                 self._check_automatic_hand_win(player)
 
@@ -643,7 +644,7 @@ class RoomManager:
 
     Important : chaque appel à `get_room` reconstruit un objet `Room` neuf
     à partir de l'état enregistré. Toute méthode qui modifie l'état d'un
-    salon (add_player, start_game, draw, discard, declare...) doit donc être
+    salon (add_player, start_game, draw, discard...) doit donc être
     suivie d'un appel à `save_room` pour que la modification soit conservée
     d'une requête à l'autre.
     """

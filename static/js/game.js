@@ -438,8 +438,6 @@ const RamiTable = {
   handDrag: null,
   suppressNextCardClick: false,
 
-  // La déclaration est entièrement automatique côté serveur.
-
   async init(roomCode) {
     this.roomCode = roomCode;
     if (!requireLogin(`/salon/${roomCode}`)) return;
@@ -459,7 +457,7 @@ const RamiTable = {
 
     this.bindEvents();
     this.poll(true);
-    this.pollTimer = setInterval(() => this.poll(false), 500);
+    this.pollTimer = setInterval(() => this.poll(false), 700);
   },
 
   bindEvents() {
@@ -580,13 +578,31 @@ const RamiTable = {
     this.pollInFlight = true;
     try {
       const data = await apiGet(`/api/room/${this.roomCode}/state?player_id=${this.playerId}&history=${withHistory ? 1 : 0}`);
-      this.lastState = {...(this.lastState || {}), ...data.state};
-      if (data.state.my_player_id && data.state.my_player_id !== this.playerId) {
-        this.playerId = data.state.my_player_id;
+      const incoming = data.state || {};
+      const previous = this.lastState;
+      const stateChanged = !previous || previous.state_version !== incoming.state_version || previous.phase !== incoming.phase;
+
+      this.lastState = {...(previous || {}), ...incoming};
+      if (incoming.my_player_id && incoming.my_player_id !== this.playerId) {
+        this.playerId = incoming.my_player_id;
         localStorage.setItem(playerKey(this.roomCode), this.playerId);
       }
-      this.render(this.lastState);
-      if (withHistory || this.lastHistoryVersion !== this.lastState.history_version) {
+
+      // IMPORTANT : ne reconstruit pas tout le DOM à chaque polling.
+      // Le serveur incrémente state_version uniquement lorsqu'une vraie
+      // modification de partie intervient. Cela évite une grosse charge
+      // CPU/DOM sur mobile et réduit fortement la sensation de latence.
+      if (stateChanged) this.render(this.lastState);
+
+      if (withHistory) {
+        // Le premier état peut déjà contenir l'historique complet : inutile
+        // de faire immédiatement une deuxième requête /events.
+        if (Array.isArray(incoming.log)) {
+          this.lastHistoryVersion = incoming.history_version ?? -1;
+          this.renderChat(this.lastState);
+          renderLiveHistory(this.lastState);
+        }
+      } else if (this.lastHistoryVersion !== this.lastState.history_version) {
         await this.refreshHistory();
       }
     } catch (e) {
@@ -894,11 +910,6 @@ const RamiTable = {
       discardEl.className = "card card-empty";
       discardEl.textContent = "—";
     }
-
-    // Barre d'action
-    const actionBar = document.getElementById("action-bar");
-    const canAct = !this.actionInFlight && state.is_my_turn && state.turn_stage === "discard";
-    actionBar.hidden = !(state.is_my_turn && state.turn_stage === "discard");
 
     this.renderHandAndZones();
   },
