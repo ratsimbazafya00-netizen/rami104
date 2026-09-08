@@ -431,6 +431,8 @@ const RamiTable = {
   pollInFlight: false,
   lastState: null,
   lastChatSignature: "",
+  lastHistoryVersion: -1,
+  historyInFlight: false,
   pendingDiscardId: null,
   handOrder: [],
   handDrag: null,
@@ -456,8 +458,8 @@ const RamiTable = {
     }
 
     this.bindEvents();
-    this.poll();
-    this.pollTimer = setInterval(() => this.poll(), 650);
+    this.poll(true);
+    this.pollTimer = setInterval(() => this.poll(false), 500);
   },
 
   bindEvents() {
@@ -499,7 +501,7 @@ const RamiTable = {
         try {
           await apiPost(`/api/room/${this.roomCode}/chat`, { player_id: this.playerId, message });
           input.value = "";
-          await this.poll();
+          await this.refreshHistory();
           input.focus();
         } catch (err) {
           this.showError(err.message);
@@ -573,27 +575,23 @@ const RamiTable = {
     this._errTimer = setTimeout(() => (el.hidden = true), 3200);
   },
 
-  async poll() {
-    // Une action de jeu vient d'être envoyée : son POST renverra déjà
-    // l'état complet. Éviter un GET concurrent qui pourrait ramener un
-    // ancien état et donner l'impression que le clic n'a pas fonctionné.
+  async poll(withHistory = false) {
     if (this.actionInFlight || this.pollInFlight) return;
     this.pollInFlight = true;
     try {
-      const data = await apiGet(`/api/room/${this.roomCode}/state?player_id=${this.playerId}`);
-      this.lastState = data.state;
+      const data = await apiGet(`/api/room/${this.roomCode}/state?player_id=${this.playerId}&history=${withHistory ? 1 : 0}`);
+      this.lastState = {...(this.lastState || {}), ...data.state};
       if (data.state.my_player_id && data.state.my_player_id !== this.playerId) {
         this.playerId = data.state.my_player_id;
         localStorage.setItem(playerKey(this.roomCode), this.playerId);
       }
-      this.render(data.state);
+      this.render(this.lastState);
+      if (withHistory || this.lastHistoryVersion !== this.lastState.history_version) {
+        await this.refreshHistory();
+      }
     } catch (e) {
-      // Après un départ volontaire, le joueur n'est plus membre du salon.
-      // Ne pas laisser l'écran de jeu figé : arrêter le polling et revenir
-      // immédiatement à l'accueil.
       if (e.status === 403 || e.status === 404) {
-        clearInterval(this.pollTimer);
-        this.pollTimer = null;
+        clearInterval(this.pollTimer); this.pollTimer = null;
         localStorage.removeItem(playerKey(this.roomCode));
         window.location.replace("/");
         return;
@@ -601,6 +599,27 @@ const RamiTable = {
       this.showError(e.message);
     } finally {
       this.pollInFlight = false;
+    }
+  },
+
+  async refreshHistory() {
+    if (this.historyInFlight) return;
+    this.historyInFlight = true;
+    try {
+      const data = await apiGet(`/api/room/${this.roomCode}/events?player_id=${this.playerId}`);
+      if (!this.lastState) return;
+      this.lastState.log = data.log || [];
+      this.lastState.chat = data.chat || [];
+      this.lastState.discard_pile = data.discard_pile || [];
+      this.lastState.last_discard_take = data.last_discard_take || null;
+      this.lastState.history_version = data.history_version;
+      this.lastHistoryVersion = data.history_version;
+      this.renderChat(this.lastState);
+      renderLiveHistory(this.lastState);
+    } catch (e) {
+      if (e.status !== 403 && e.status !== 404) this.showError(e.message);
+    } finally {
+      this.historyInFlight = false;
     }
   },
 
@@ -639,7 +658,7 @@ const RamiTable = {
     this.actionInFlight = true;
     this.setActionBusy(true, source === "defausse" ? "Prise…" : "Pioche…");
     try {
-      const data = await this.actionRequest(`/api/room/${this.roomCode}/draw`, { player_id: this.playerId, source });
+      const data = await this.actionRequest(`/api/room/${this.roomCode}/draw`, { player_id: this.playerId, source, state_version: this.lastState?.state_version });
       if (data.state) {
         this.lastState = data.state;
         this.render(data.state);
@@ -649,8 +668,7 @@ const RamiTable = {
     } finally {
       this.setActionBusy(false);
       this.actionInFlight = false;
-      // Synchronisation légère après l'action, sans attendre le prochain cycle.
-      setTimeout(() => this.poll(), 60);
+      await this.refreshHistory();
     }
   },
 
@@ -660,7 +678,7 @@ const RamiTable = {
     this.pendingDiscardId = null;
     this.setActionBusy(true, "Défausse…");
     try {
-      const data = await this.actionRequest(`/api/room/${this.roomCode}/discard`, { player_id: this.playerId, card_id: cardId });
+      const data = await this.actionRequest(`/api/room/${this.roomCode}/discard`, { player_id: this.playerId, card_id: cardId, state_version: this.lastState?.state_version });
       if (data.state) {
         this.lastState = data.state;
         this.render(data.state);
@@ -670,7 +688,7 @@ const RamiTable = {
     } finally {
       this.setActionBusy(false);
       this.actionInFlight = false;
-      setTimeout(() => this.poll(), 60);
+      await this.refreshHistory();
     }
   },
 
@@ -723,6 +741,9 @@ const RamiTable = {
     if (busy && banner && label) {
       banner.dataset.previousText = banner.textContent || "";
       banner.textContent = label;
+    } else if (!busy && banner && banner.dataset.previousText) {
+      banner.textContent = banner.dataset.previousText;
+      delete banner.dataset.previousText;
     }
   },
 
@@ -738,8 +759,6 @@ const RamiTable = {
     if (state.phase === "finished") {
       this.renderFinished(state);
     }
-    this.renderChat(state);
-    renderLiveHistory(state);
     if (state.phase === "finished") {
       // On continue de sonder pour voir quand l'hôte prépare la manche suivante.
       if (!this.pollTimer) this.pollTimer = setInterval(() => this.poll(), 1500);

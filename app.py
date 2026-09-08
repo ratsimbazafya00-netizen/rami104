@@ -358,8 +358,25 @@ def api_room_state(code):
     player = room.reconnect(account["id"], player_id)
     if player is None:
         return error_response("Vous n'êtes pas inscrit dans ce salon.", 403)
-    room_manager.save_room(room)
-    return jsonify({"ok": True, "state": room.state_for(player.id)})
+    lite = request.args.get("history", "0") != "1"
+    return jsonify({"ok": True, "state": room.state_for(player.id, include_history=not lite)})
+
+@app.route("/api/room/<code>/events")
+def api_room_events(code):
+    account, error = require_account()
+    if error:
+        return error
+    try:
+        room = room_manager.get_room(code)
+    except StorageError as e:
+        return error_response(e, 503)
+    if room is None:
+        return error_response("Salon introuvable.", 404)
+    player_id = request.args.get("player_id", "")
+    player = room.reconnect(account["id"], player_id)
+    if player is None:
+        return error_response("Vous n'êtes pas inscrit dans ce salon.", 403)
+    return jsonify({"ok": True, "history_version": room.history_version, "log": room.log[-25:], "chat": room.chat[-150:], "discard_pile": [{"card": e["card"].to_dict(), "player_id": e["player_id"], "player_name": e["player_name"]} for e in room.discard_pile], "last_discard_take": room.last_discard_take})
 
 
 @app.route("/api/room/<code>/start", methods=["POST"])
@@ -401,6 +418,8 @@ def api_draw(code):
         player = resolve_player(room, account["id"], player_id)
         if not player:
             return error_response("Joueur non autorisé.", 403)
+        if expected_version is not None and int(expected_version) != room.state_version:
+            return error_response("Action déjà traitée ou état mis à jour. Actualisation en cours…", 409)
         room.draw(player.id, source)
         room_manager.save_room(room)
     except ValueError as e:
@@ -425,6 +444,8 @@ def api_discard(code):
         player = resolve_player(room, account["id"], player_id)
         if not player:
             return error_response("Joueur non autorisé.", 403)
+        if expected_version is not None and int(expected_version) != room.state_version:
+            return error_response("Action déjà traitée ou état mis à jour. Actualisation en cours…", 409)
         room.discard(player.id, card_id)
         room_manager.save_room(room)
     except ValueError as e:

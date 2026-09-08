@@ -54,6 +54,8 @@ class Room:
         self.host_id = None
         self.lock = threading.RLock()
         self.created_at = time.time()
+        self.state_version = 0
+        self.history_version = 0
 
     # ---------- Lobby ----------
 
@@ -99,6 +101,8 @@ class Room:
     def _log(self, message):
         self.log.append(message)
         self.log = self.log[-60:]  # garde les 60 derniers événements
+        self.state_version += 1
+        self.history_version += 1
 
     def add_chat_message(self, player_id, message):
         with self.lock:
@@ -118,6 +122,8 @@ class Room:
                 "created_at": time.time(),
             })
             self.chat = self.chat[-150:]
+            self.state_version += 1
+            self.history_version += 1
 
     # ---------- Démarrage ----------
 
@@ -476,7 +482,7 @@ class Room:
 
     # ---------- Sérialisation pour un joueur donné ----------
 
-    def state_for(self, player_id):
+    def state_for(self, player_id, include_history=True):
         with self.lock:
             me = self.get_player(player_id)
             players_public = []
@@ -500,20 +506,12 @@ class Room:
                 "players": players_public,
                 "nb_players": len(self.players),
                 "max_players": MAX_PLAYERS,
-                "log": self.log[-25:],
-                "chat": self.chat[-150:],
+                "state_version": self.state_version,
+                "history_version": self.history_version,
                 "joker_info": self.joker_info,
                 "deck_count": len(self.deck),
                 "discard_top": self.discard_pile[-1]["card"].to_dict() if self.discard_pile else None,
                 "last_discard_take": self.last_discard_take,
-                "discard_pile": [
-                    {
-                        "card": entry["card"].to_dict(),
-                        "player_id": entry["player_id"],
-                        "player_name": entry["player_name"],
-                    }
-                    for entry in self.discard_pile
-                ],
                 "winner_id": self.winner_id,
                 "winner_name": self.get_player(self.winner_id).name if self.winner_id else None,
                 "win_reason": self.win_reason,
@@ -524,6 +522,13 @@ class Room:
                 "last_winner_id": self.last_winner_id,
                 "last_winner_name": self.get_player(self.last_winner_id).name if self.last_winner_id and self.get_player(self.last_winner_id) else None,
             }
+            if include_history:
+                data["log"] = self.log[-25:]
+                data["chat"] = self.chat[-150:]
+                data["discard_pile"] = [
+                    {"card": entry["card"].to_dict(), "player_id": entry["player_id"], "player_name": entry["player_name"]}
+                    for entry in self.discard_pile
+                ]
             if self.phase != "lobby":
                 data["turn_player_id"] = self.current_player().id if self.players else None
                 data["turn_player_name"] = self.current_player().name if self.players else None
@@ -531,10 +536,7 @@ class Room:
                 data["is_my_turn"] = bool(me and self.current_player() and me.id == self.current_player().id)
             if me is not None:
                 data["my_player_id"] = me.id
-                data["my_hand"] = sorted(
-                    [c.to_dict() for c in me.hand],
-                    key=lambda d: (d["suit"], d["rank"])
-                )
+                data["my_hand"] = sorted([c.to_dict() for c in me.hand], key=lambda d: (d["suit"], d["rank"]))
                 data["my_seat"] = me.seat
                 data["my_joker_count"] = me.joker_count(self.joker_info) if self.joker_info else 0
             return data
@@ -584,6 +586,8 @@ class Room:
             "last_winner_id": self.last_winner_id,
             "host_id": self.host_id,
             "created_at": self.created_at,
+            "state_version": self.state_version,
+            "history_version": self.history_version,
         }
 
     @classmethod
@@ -622,6 +626,8 @@ class Room:
         if room.host_id is None and room.players:
             room.host_id = room.players[0].id
         room.created_at = data.get("created_at", time.time())
+        room.state_version = int(data.get("state_version", 0) or 0)
+        room.history_version = int(data.get("history_version", room.state_version) or 0)
         return room
 
 

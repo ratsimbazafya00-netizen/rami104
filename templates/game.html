@@ -7,7 +7,7 @@
 <title>Rami 104 — Salon {{ room_code }}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v=8) }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v=9) }}">
 </head>
 <body class="table-body" data-room-code="{{ room_code }}">
 
@@ -125,7 +125,7 @@
         <span>🏆</span><div><strong>Combinaison gagnante détectée automatiquement</strong><small>Le serveur a reconnu les 13 cartes gagnantes sans action manuelle.</small></div>
       </div>
 
-      <div id="finished-hand" class="declare-builder finished-hand" hidden>
+      <div id="finished-hand" class="finished-winning-hand" hidden>
         <div class="zone zone-tri"><div class="zone-head"><h3>TRI</h3></div><div id="fh-tri" class="zone-slots read-only"></div></div>
         <div class="zone zone-escalier"><div class="zone-head"><h3>ESCALIER</h3></div><div id="fh-escalier" class="zone-slots read-only"></div></div>
         <div class="zone zone-carre"><div class="zone-head"><h3>CARRÉ</h3></div><div id="fh-carre" class="zone-slots read-only"></div></div>
@@ -151,7 +151,7 @@
 
   <p id="table-error" class="error-toast" hidden></p>
 
-<script src="{{ url_for('static', filename='js/game.js', v=8) }}"></script>
+<script src="{{ url_for('static', filename='js/game.js', v=9) }}"></script>
 <script>RamiTable.init("{{ room_code }}");</script>
 </body>
 </html>
