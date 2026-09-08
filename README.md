@@ -162,3 +162,8 @@ La construction manuelle des 4 groupes n'est plus nécessaire. Après chaque pio
 Il n'existe plus de validation manuelle de la main. Après chaque pioche, lorsqu'un joueur possède 14 cartes, le serveur recherche automatiquement une partition gagnante de 13 cartes selon toutes les règles du Rami 104 (Tri, Escalier, Carré, Groupe 4 et règles des jokers). Si une partition valide existe, la victoire est enregistrée immédiatement et la 14e carte est mise en défausse. Le joueur n'a donc pas besoin de ranger ses cartes ni de cliquer sur « Valider ».
 
 Les actions Pioche/Défausse sont protégées contre les clics répétés côté client et le nouvel état renvoyé par le serveur est affiché directement, sans second appel obligatoire après chaque action.
+
+## V11 hotfix
+- Fixed missing state_version assignment in /draw and /discard.
+- Improved action JSON error handling when the server returns non-JSON HTML.
+- Automatic winning-hand detection remains server-side; no manual proposal button.

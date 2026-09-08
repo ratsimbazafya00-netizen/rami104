@@ -721,7 +721,20 @@ const RamiTable = {
         body: JSON.stringify(body || {}),
         signal: controller.signal,
       });
-      const data = await res.json();
+      const contentType = res.headers.get("content-type") || "";
+      const raw = await res.text();
+      let data;
+      try {
+        data = contentType.includes("application/json") ? JSON.parse(raw) : null;
+      } catch (_) {
+        data = null;
+      }
+      if (!data) {
+        const preview = raw.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 180);
+        const err = new Error(preview || `Réponse serveur invalide (${res.status}).`);
+        err.status = res.status;
+        throw err;
+      }
       if (res.status === 401) {
         localStorage.removeItem("rami_auth_token");
         window.location.href = `/login?next=${encodeURIComponent(window.location.pathname)}`;

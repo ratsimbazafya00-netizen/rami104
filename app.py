@@ -422,6 +422,7 @@ def api_draw(code):
     data = request.get_json(force=True) or {}
     player_id = data.get("player_id", "")
     source = data.get("source", "pioche")
+    expected_version = data.get("state_version")
     try:
         room = room_manager.get_room(code)
         if room is None:
@@ -448,6 +449,7 @@ def api_discard(code):
     data = request.get_json(force=True) or {}
     player_id = data.get("player_id", "")
     card_id = data.get("card_id", "")
+    expected_version = data.get("state_version")
     try:
         room = room_manager.get_room(code)
         if room is None:
