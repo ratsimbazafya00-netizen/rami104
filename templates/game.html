@@ -7,7 +7,7 @@
 <title>Rami 104 — Salon {{ room_code }}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v=13) }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v=14) }}">
 </head>
 <body class="table-body" data-room-code="{{ room_code }}">
 
@@ -149,7 +149,7 @@
 
   <p id="table-error" class="error-toast" hidden></p>
 
-<script src="{{ url_for('static', filename='js/game.js', v=13) }}"></script>
+<script src="{{ url_for('static', filename='js/game.js', v=14) }}"></script>
 <script>RamiTable.init("{{ room_code }}");</script>
 </body>
 </html>

@@ -999,8 +999,10 @@ const RamiTable = {
     let timer = null;
     let dragging = false;
     let moved = false;
+    let scrollGesture = false;
     let startX = 0;
     let startY = 0;
+    let startScrollLeft = 0;
     let pointerId = null;
     let ghost = null;
     const cardId = el.dataset.id;
@@ -1021,11 +1023,10 @@ const RamiTable = {
       handEl.classList.remove("drop-target");
       this.handDrag = null;
       dragging = false;
+      scrollGesture = false;
       moved = false;
       pointerId = null;
       setTimeout(() => { this.suppressNextCardClick = false; }, 0);
-      // IMPORTANT: ne rerend pas ici. Un rerender détruirait la position
-      // visuelle juste après un glissement et pouvait casser le défilement.
     };
 
     const begin = (ev) => {
@@ -1042,7 +1043,7 @@ const RamiTable = {
       ghost.style.top = `${ev.clientY - rect.height / 2}px`;
       document.body.appendChild(ghost);
       handEl.classList.add("drop-target");
-      this.handDrag = {id: cardId};
+      this.handDrag = {id: cardId, mode: "drag"};
       try { el.setPointerCapture(ev.pointerId); } catch (_) {}
     };
 
@@ -1053,12 +1054,15 @@ const RamiTable = {
       pointerId = ev.pointerId;
       startX = ev.clientX;
       startY = ev.clientY;
+      startScrollLeft = handEl.scrollLeft;
       moved = false;
+      scrollGesture = false;
 
       if (ev.pointerType === "mouse") return;
 
-      // Sur tactile: le défilement horizontal est PRIORITAIRE.
-      // Une carte ne devient déplaçable qu'après un appui long immobile.
+      // Tactile : on attend 350 ms sans mouvement avant d'activer le drag.
+      // Pendant ce délai, un geste horizontal devient un vrai scroll manuel.
+      this.handDrag = {id: cardId, mode: "pending"};
       timer = setTimeout(() => {
         timer = null;
         if (!moved && pointerId === ev.pointerId) begin(ev);
@@ -1071,17 +1075,33 @@ const RamiTable = {
       const dy = ev.clientY - startY;
 
       if (!dragging) {
-        // Dès que le doigt bouge, on laisse le navigateur gérer le scroll.
-        // Le long-press est annulé pour éviter de capturer le défilement.
-        if (Math.hypot(dx, dy) > 7) {
-          moved = true;
-          clearTimer();
-          if (ev.pointerType !== "mouse") return;
-          if (Math.abs(dx) + Math.abs(dy) >= 7) begin(ev);
+        if (Math.hypot(dx, dy) <= 7) return;
+
+        moved = true;
+        clearTimer();
+        this.suppressNextCardClick = true;
+
+        // Sur mobile, le geste horizontal est réservé au défilement.
+        // Le conteneur utilise touch-action: pan-y, donc on peut prendre
+        // la main uniquement pour l'axe X sans casser le scroll vertical.
+        if (ev.pointerType !== "mouse") {
+          if (Math.abs(dx) >= Math.abs(dy)) {
+            scrollGesture = true;
+            this.handDrag = {id: cardId, mode: "scroll"};
+            handEl.scrollLeft = Math.max(0, startScrollLeft - dx);
+            ev.preventDefault();
+          } else {
+            this.handDrag = {id: cardId, mode: "vertical"};
+          }
+          return;
         }
+
+        // Souris : déplacement immédiat.
+        begin(ev);
         return;
       }
 
+      // Drag actif : le navigateur ne doit plus faire défiler la main.
       ev.preventDefault();
       if (ghost) {
         ghost.style.left = `${ev.clientX - ghost.offsetWidth / 2}px`;
@@ -1101,10 +1121,7 @@ const RamiTable = {
       if (pointerId !== null && ev.pointerId !== pointerId) return;
       clearTimer();
       if (dragging) cleanup(true);
-      else {
-        pointerId = null;
-        moved = false;
-      }
+      else cleanup(false);
     });
 
     el.addEventListener("pointercancel", () => cleanup(dragging));
