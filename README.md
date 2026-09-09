@@ -167,7 +167,3 @@ Les actions Pioche/Défausse sont protégées contre les clics répétés côté
 - Fixed missing state_version assignment in /draw and /discard.
 - Improved action JSON error handling when the server returns non-JSON HTML.
 - Automatic winning-hand detection remains server-side; no manual proposal button.
-
-
-## V14 — scroll tactile
-Le scroll horizontal de la main est géré manuellement pendant le geste tactile; un appui long immobile active le réordonnancement.
