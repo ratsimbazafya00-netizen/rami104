@@ -434,9 +434,6 @@ const RamiTable = {
   lastHistoryVersion: -1,
   historyInFlight: false,
   pendingDiscardId: null,
-  handOrder: [],
-  handDrag: null,
-  suppressNextCardClick: false,
 
   async init(roomCode) {
     this.roomCode = roomCode;
@@ -592,7 +589,7 @@ const RamiTable = {
       // Le serveur incrémente state_version uniquement lorsqu'une vraie
       // modification de partie intervient. Cela évite une grosse charge
       // CPU/DOM sur mobile et réduit fortement la sensation de latence.
-      if (stateChanged && !this.handDrag) this.render(this.lastState);
+      if (stateChanged) this.render(this.lastState);
 
       if (withHistory) {
         // Le premier état peut déjà contenir l'historique complet : inutile
@@ -931,42 +928,31 @@ const RamiTable = {
     const state = this.lastState;
     if (!state || !state.my_hand) return;
     const hand = state.my_hand;
-    const ids = new Set(hand.map(c => c.id));
-
-    // L'ordre est purement visuel : le serveur garde toujours la vraie main.
-    // On conserve l'ordre choisi par le joueur et on ajoute les nouvelles
-    // cartes à la fin après une pioche.
-    this.handOrder = this.handOrder.filter(id => ids.has(id));
-    hand.forEach(c => { if (!this.handOrder.includes(c.id)) this.handOrder.push(c.id); });
-    const byId = new Map(hand.map(c => [c.id, c]));
-    const orderedHand = this.handOrder.map(id => byId.get(id)).filter(Boolean);
 
     const canAct = !this.actionInFlight && state.is_my_turn && state.turn_stage === "discard";
     if (!canAct || !hand.some(c => c.id === this.pendingDiscardId)) this.pendingDiscardId = null;
 
     const handEl = document.getElementById("hand");
     // Conserver exactement la position de défilement horizontale.
-    // Un rerender (clic, changement de tour, etc.) ne doit jamais ramener
-    // la main au début.
     const savedScrollLeft = handEl.scrollLeft;
     handEl.innerHTML = "";
     handEl.classList.remove("drop-target");
 
-    orderedHand.forEach((c) => {
+    // Ordre stable côté serveur (déjà trié suit+rank). Pas de drag : la détection est auto.
+    hand.forEach((c) => {
       const el = document.createElement("div");
-      el.className = "card draggable " + (c.color === "Rouge" ? "red" : "black");
-      if (state.joker_info && c.rank === state.joker_info.rank && state.joker_info.suits.includes(c.suit)) el.classList.add("joker-card");
+      el.className = "card " + (c.color === "Rouge" ? "red" : "black");
+      if (state.joker_info && c.rank === state.joker_info.rank && state.joker_info.suits.includes(c.suit)) {
+        el.classList.add("joker-card");
+      }
       el.textContent = c.label;
       el.dataset.id = c.id;
-      el.title = "Glissez pour réorganiser votre main";
+      el.title = canAct ? "Touchez pour sélectionner / défausser" : "Votre main";
 
       if (canAct) {
+        el.classList.add("discardable");
         el.addEventListener("click", (ev) => {
           ev.stopPropagation();
-          if (this.suppressNextCardClick) {
-            this.suppressNextCardClick = false;
-            return;
-          }
           this.pendingDiscardId = this.pendingDiscardId === c.id ? null : c.id;
           this.renderHandAndZones();
         });
@@ -980,7 +966,6 @@ const RamiTable = {
         confirm.textContent = "✓";
         confirm.title = "Défausser";
         confirm.setAttribute("aria-label", `Défausser ${c.label}`);
-        confirm.addEventListener("pointerdown", (ev) => ev.stopPropagation());
         confirm.addEventListener("click", (ev) => {
           ev.preventDefault();
           ev.stopPropagation();
@@ -989,147 +974,11 @@ const RamiTable = {
         el.appendChild(confirm);
       }
 
-      this.bindCardReorder(el, handEl);
       handEl.appendChild(el);
     });
     requestAnimationFrame(() => { handEl.scrollLeft = savedScrollLeft; });
   },
 
-  bindCardReorder(el, handEl) {
-    let timer = null;
-    let dragging = false;
-    let moved = false;
-    let scrollGesture = false;
-    let startX = 0;
-    let startY = 0;
-    let startScrollLeft = 0;
-    let pointerId = null;
-    let ghost = null;
-    const cardId = el.dataset.id;
-
-    const clearTimer = () => {
-      if (timer) clearTimeout(timer);
-      timer = null;
-    };
-
-    const getOrder = () => [...handEl.querySelectorAll(":scope > .card.draggable")].map(x => x.dataset.id);
-
-    const cleanup = (commit = false) => {
-      clearTimer();
-      if (commit) this.handOrder = getOrder();
-      if (ghost) ghost.remove();
-      ghost = null;
-      el.classList.remove("dragging");
-      handEl.classList.remove("drop-target");
-      this.handDrag = null;
-      dragging = false;
-      scrollGesture = false;
-      moved = false;
-      pointerId = null;
-      setTimeout(() => { this.suppressNextCardClick = false; }, 0);
-    };
-
-    const begin = (ev) => {
-      if (dragging || this.actionInFlight) return;
-      dragging = true;
-      this.suppressNextCardClick = true;
-      el.classList.add("dragging");
-      ghost = el.cloneNode(true);
-      ghost.classList.add("card-drag-ghost");
-      const rect = el.getBoundingClientRect();
-      ghost.style.width = `${rect.width}px`;
-      ghost.style.height = `${rect.height}px`;
-      ghost.style.left = `${ev.clientX - rect.width / 2}px`;
-      ghost.style.top = `${ev.clientY - rect.height / 2}px`;
-      document.body.appendChild(ghost);
-      handEl.classList.add("drop-target");
-      this.handDrag = {id: cardId, mode: "drag"};
-      try { el.setPointerCapture(ev.pointerId); } catch (_) {}
-    };
-
-    el.addEventListener("pointerdown", (ev) => {
-      if (this.actionInFlight) return;
-      if (ev.button !== undefined && ev.button !== 0) return;
-      if (ev.target.closest("button")) return;
-      pointerId = ev.pointerId;
-      startX = ev.clientX;
-      startY = ev.clientY;
-      startScrollLeft = handEl.scrollLeft;
-      moved = false;
-      scrollGesture = false;
-
-      if (ev.pointerType === "mouse") return;
-
-      // Tactile : on attend 350 ms sans mouvement avant d'activer le drag.
-      // Pendant ce délai, un geste horizontal devient un vrai scroll manuel.
-      this.handDrag = {id: cardId, mode: "pending"};
-      timer = setTimeout(() => {
-        timer = null;
-        if (!moved && pointerId === ev.pointerId) begin(ev);
-      }, 350);
-    }, {passive: true});
-
-    el.addEventListener("pointermove", (ev) => {
-      if (pointerId !== null && ev.pointerId !== pointerId) return;
-      const dx = ev.clientX - startX;
-      const dy = ev.clientY - startY;
-
-      if (!dragging) {
-        if (Math.hypot(dx, dy) <= 7) return;
-
-        moved = true;
-        clearTimer();
-        this.suppressNextCardClick = true;
-
-        // Sur mobile, le geste horizontal est réservé au défilement.
-        // Le conteneur utilise touch-action: pan-y, donc on peut prendre
-        // la main uniquement pour l'axe X sans casser le scroll vertical.
-        if (ev.pointerType !== "mouse") {
-          if (Math.abs(dx) >= Math.abs(dy)) {
-            scrollGesture = true;
-            this.handDrag = {id: cardId, mode: "scroll"};
-            handEl.scrollLeft = Math.max(0, startScrollLeft - dx);
-            ev.preventDefault();
-          } else {
-            this.handDrag = {id: cardId, mode: "vertical"};
-          }
-          return;
-        }
-
-        // Souris : déplacement immédiat.
-        begin(ev);
-        return;
-      }
-
-      // Drag actif : le navigateur ne doit plus faire défiler la main.
-      ev.preventDefault();
-      if (ghost) {
-        ghost.style.left = `${ev.clientX - ghost.offsetWidth / 2}px`;
-        ghost.style.top = `${ev.clientY - ghost.offsetHeight / 2}px`;
-      }
-
-      const siblings = [...handEl.querySelectorAll(":scope > .card.draggable:not(.dragging)")];
-      const target = siblings.find(other => {
-        const r = other.getBoundingClientRect();
-        return ev.clientX < r.left + r.width / 2;
-      });
-      if (target) handEl.insertBefore(el, target);
-      else handEl.appendChild(el);
-    }, {passive: false});
-
-    el.addEventListener("pointerup", (ev) => {
-      if (pointerId !== null && ev.pointerId !== pointerId) return;
-      clearTimer();
-      if (dragging) cleanup(true);
-      else cleanup(false);
-    });
-
-    el.addEventListener("pointercancel", () => cleanup(dragging));
-    el.addEventListener("lostpointercapture", () => {
-      if (dragging) cleanup(true);
-      else clearTimer();
-    });
-  },
   renderChat(state) {
     const messages = Array.isArray(state.chat) ? state.chat : [];
     const signature = messages.map(m => `${m.id || ""}:${m.message || ""}`).join("|");
