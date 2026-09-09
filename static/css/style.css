@@ -703,8 +703,39 @@ label{display:block;color:#9db6aa;font-size:.7rem;font-weight:700;margin:0 0 7px
 .pile.action-busy::after{content:"";position:absolute;inset:0;cursor:wait}
 .hand .card.discard-pending .discard-confirm{touch-action:manipulation}
 
+/* ---------- Drag & drop de la main (robuste mobile) ---------- */
+.hand .card.draggable {
+  position: relative;
+  touch-action: pan-x;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-user-drag: none;
+  cursor: grab;
+}
+.hand .card.draggable:active { cursor: grabbing; }
 
-/* Cartes de la main : cliquables pour défausse, scroll horizontal libre */
-.hand .card.discardable{cursor:pointer;touch-action:manipulation;}
-.hand .card.discardable:active{transform:scale(.97);}
+.hand .card.dragging {
+  opacity: 0.25;
+}
 
+.card-drag-ghost {
+  position: fixed !important;
+  z-index: 9999 !important;
+  pointer-events: none !important;
+  opacity: 0.92 !important;
+  transform: scale(1.08) rotate(-2deg) !important;
+  box-shadow: 0 18px 35px rgba(0,0,0,.55) !important;
+}
+
+.hand.drop-target {
+  outline: 1px dashed rgba(244,196,0,.35);
+  outline-offset: 3px;
+  border-radius: 10px;
+}
+
+.hand .card.discard-pending {
+  outline: 2px solid #f4c400;
+  outline-offset: 2px;
+  transform: translateY(-5px);
+}
