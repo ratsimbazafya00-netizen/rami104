@@ -930,25 +930,24 @@ const RamiTable = {
   renderHandAndZones() {
     const state = this.lastState;
     if (!state || !state.my_hand) return;
-
     const hand = state.my_hand;
     const ids = new Set(hand.map(c => c.id));
 
-    // Ordre purement visuel : on conserve le choix du joueur et on ajoute
-    // les nouvelles cartes (après pioche) à la fin.
+    // L'ordre est purement visuel : le serveur garde toujours la vraie main.
+    // On conserve l'ordre choisi par le joueur et on ajoute les nouvelles
+    // cartes à la fin après une pioche.
     this.handOrder = this.handOrder.filter(id => ids.has(id));
-    hand.forEach(c => {
-      if (!this.handOrder.includes(c.id)) this.handOrder.push(c.id);
-    });
+    hand.forEach(c => { if (!this.handOrder.includes(c.id)) this.handOrder.push(c.id); });
     const byId = new Map(hand.map(c => [c.id, c]));
     const orderedHand = this.handOrder.map(id => byId.get(id)).filter(Boolean);
 
     const canAct = !this.actionInFlight && state.is_my_turn && state.turn_stage === "discard";
-    if (!canAct || !hand.some(c => c.id === this.pendingDiscardId)) {
-      this.pendingDiscardId = null;
-    }
+    if (!canAct || !hand.some(c => c.id === this.pendingDiscardId)) this.pendingDiscardId = null;
 
     const handEl = document.getElementById("hand");
+    // Conserver exactement la position de défilement horizontale.
+    // Un rerender (clic, changement de tour, etc.) ne doit jamais ramener
+    // la main au début.
     const savedScrollLeft = handEl.scrollLeft;
     handEl.innerHTML = "";
     handEl.classList.remove("drop-target");
@@ -956,14 +955,10 @@ const RamiTable = {
     orderedHand.forEach((c) => {
       const el = document.createElement("div");
       el.className = "card draggable " + (c.color === "Rouge" ? "red" : "black");
-      if (state.joker_info &&
-          c.rank === state.joker_info.rank &&
-          state.joker_info.suits.includes(c.suit)) {
-        el.classList.add("joker-card");
-      }
+      if (state.joker_info && c.rank === state.joker_info.rank && state.joker_info.suits.includes(c.suit)) el.classList.add("joker-card");
       el.textContent = c.label;
       el.dataset.id = c.id;
-      el.title = "Glissez pour réorganiser • Touchez pour défausser";
+      el.title = "Glissez pour réorganiser votre main";
 
       if (canAct) {
         el.addEventListener("click", (ev) => {
@@ -997,117 +992,80 @@ const RamiTable = {
       this.bindCardReorder(el, handEl);
       handEl.appendChild(el);
     });
-
-    requestAnimationFrame(() => {
-      handEl.scrollLeft = savedScrollLeft;
-    });
+    requestAnimationFrame(() => { handEl.scrollLeft = savedScrollLeft; });
   },
 
   bindCardReorder(el, handEl) {
-    let timer = null;
+    // IMPORTANT : le corps de la carte reste un scroll tactile natif.
+    // Seule la petite poignée ↔ démarre un déplacement. Cela évite
+    // définitivement le conflit entre swipe horizontal et drag.
+    const handle = document.createElement("button");
+    handle.type = "button";
+    handle.className = "card-drag-handle";
+    handle.textContent = "↔";
+    handle.title = "Maintenir puis déplacer cette carte";
+    handle.setAttribute("aria-label", `Déplacer ${el.textContent.trim()}`);
+    el.insertBefore(handle, el.firstChild);
+
     let dragging = false;
-    let moved = false;
-    let startX = 0;
-    let startY = 0;
     let pointerId = null;
     let ghost = null;
+    let startX = 0;
+    let startY = 0;
+    let moved = false;
     const cardId = el.dataset.id;
 
-    const clearTimer = () => {
-      if (timer) clearTimeout(timer);
-      timer = null;
-    };
+    const orderFromDom = () => [...handEl.querySelectorAll(":scope > .card.draggable")].map(x => x.dataset.id);
 
-    const getOrder = () =>
-      [...handEl.querySelectorAll(":scope > .card.draggable")].map(x => x.dataset.id);
-
-    const cleanup = (commit = false) => {
-      clearTimer();
-      if (commit) this.handOrder = getOrder();
-      if (ghost) {
-        ghost.remove();
-        ghost = null;
-      }
+    const cleanup = (commit) => {
+      if (ghost) ghost.remove();
+      ghost = null;
       el.classList.remove("dragging");
       handEl.classList.remove("drop-target");
-      this.handDrag = null;
       dragging = false;
-      moved = false;
       pointerId = null;
-      setTimeout(() => { this.suppressNextCardClick = false; }, 50);
+      if (commit) this.handOrder = orderFromDom();
+      this.handDrag = null;
     };
 
-    const begin = (ev) => {
-      if (dragging || this.actionInFlight) return;
-      dragging = true;
-      this.suppressNextCardClick = true;
-      el.classList.add("dragging");
-
-      ghost = el.cloneNode(true);
-      ghost.classList.add("card-drag-ghost");
-      // Retirer le bouton ✓ du ghost s'il y en a un
-      const btn = ghost.querySelector(".discard-confirm");
-      if (btn) btn.remove();
-
-      const rect = el.getBoundingClientRect();
-      ghost.style.width = `${rect.width}px`;
-      ghost.style.height = `${rect.height}px`;
-      ghost.style.left = `${ev.clientX - rect.width / 2}px`;
-      ghost.style.top = `${ev.clientY - rect.height / 2}px`;
-      document.body.appendChild(ghost);
-
-      handEl.classList.add("drop-target");
-      this.handDrag = { id: cardId, pointerId: ev.pointerId };
-
-      try { el.setPointerCapture(ev.pointerId); } catch (_) {}
-    };
-
-    el.addEventListener("pointerdown", (ev) => {
+    handle.addEventListener("pointerdown", (ev) => {
       if (this.actionInFlight) return;
       if (ev.button !== undefined && ev.button !== 0) return;
-      if (ev.target.closest("button")) return;
-
+      ev.preventDefault();
+      ev.stopPropagation();
       pointerId = ev.pointerId;
       startX = ev.clientX;
       startY = ev.clientY;
       moved = false;
+      this.handDrag = { id: cardId, mode: "handle" };
+      try { handle.setPointerCapture(pointerId); } catch (_) {}
+    }, {passive:false});
 
-      // Souris : drag immédiat
-      if (ev.pointerType === "mouse") {
-        begin(ev);
-        return;
-      }
-
-      // Tactile : appui long pour laisser le scroll prioritaire
-      timer = setTimeout(() => {
-        timer = null;
-        if (!moved && pointerId === ev.pointerId) begin(ev);
-      }, 350);
-    }, { passive: true });
-
-    el.addEventListener("pointermove", (ev) => {
-      if (pointerId !== null && ev.pointerId !== pointerId) return;
-
-      const dx = ev.clientX - startX;
-      const dy = ev.clientY - startY;
-
-      if (!dragging) {
-        // Dès qu'on bouge un peu → annuler le long-press (laisse le scroll)
-        if (Math.hypot(dx, dy) > 8) {
-          moved = true;
-          clearTimer();
-          if (ev.pointerType === "mouse") begin(ev);
-        }
-        return;
-      }
-
-      // Drag en cours
+    handle.addEventListener("pointermove", (ev) => {
+      if (ev.pointerId !== pointerId) return;
       ev.preventDefault();
+      ev.stopPropagation();
+      if (!dragging) {
+        if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < 5) return;
+        moved = true;
+        dragging = true;
+        this.suppressNextCardClick = true;
+        el.classList.add("dragging");
+        const rect = el.getBoundingClientRect();
+        ghost = el.cloneNode(true);
+        ghost.classList.remove("dragging");
+        ghost.classList.add("card-drag-ghost");
+        ghost.style.width = `${rect.width}px`;
+        ghost.style.height = `${rect.height}px`;
+        ghost.style.left = `${ev.clientX - rect.width / 2}px`;
+        ghost.style.top = `${ev.clientY - rect.height / 2}px`;
+        document.body.appendChild(ghost);
+        handEl.classList.add("drop-target");
+      }
       if (ghost) {
         ghost.style.left = `${ev.clientX - ghost.offsetWidth / 2}px`;
         ghost.style.top = `${ev.clientY - ghost.offsetHeight / 2}px`;
       }
-
       const siblings = [...handEl.querySelectorAll(":scope > .card.draggable:not(.dragging)")];
       const target = siblings.find(other => {
         const r = other.getBoundingClientRect();
@@ -1115,26 +1073,21 @@ const RamiTable = {
       });
       if (target) handEl.insertBefore(el, target);
       else handEl.appendChild(el);
-    }, { passive: false });
+    }, {passive:false});
 
-    const endDrag = (ev) => {
-      if (pointerId !== null && ev.pointerId !== pointerId) return;
-      clearTimer();
-      if (dragging) cleanup(true);
-      else {
-        pointerId = null;
-        moved = false;
-      }
-    };
+    handle.addEventListener("pointerup", (ev) => {
+      if (ev.pointerId !== pointerId) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      cleanup(dragging && moved);
+      this.suppressNextCardClick = false;
+    }, {passive:false});
 
-    el.addEventListener("pointerup", endDrag);
-    el.addEventListener("pointercancel", () => cleanup(dragging));
-    el.addEventListener("lostpointercapture", () => {
-      if (dragging) cleanup(true);
-      else clearTimer();
+    handle.addEventListener("pointercancel", () => cleanup(dragging && moved));
+    handle.addEventListener("lostpointercapture", () => {
+      if (pointerId !== null) cleanup(dragging && moved);
     });
   },
-
   renderChat(state) {
     const messages = Array.isArray(state.chat) ? state.chat : [];
     const signature = messages.map(m => `${m.id || ""}:${m.message || ""}`).join("|");
